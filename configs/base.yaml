@@ -1,0 +1,76 @@
+# HEMT-CLIP base config — all hyperparameters in one place
+# Edit values here rather than hard-coding in scripts.
+
+seed: 42
+
+data:
+  hdf5_path: /content/drive/MyDrive/hemt-clip-fnd/data/fakeddit.h5
+  splits_dir: data/splits
+  train_csv: data/splits/train.csv
+  val_csv:   data/splits/val.csv
+  test_csv:  data/splits/test.csv
+  num_samples: 15000        # target after broken-URL filtering
+  oversample_for_download: 18000
+  image_size: 224
+  max_text_len: 128
+  num_workers: 2
+  pin_memory: true
+
+model:
+  text:
+    name: roberta-base
+    hidden_dim: 768
+    proj_dim: 512
+    trainable_layers: 2     # last N transformer layers
+    dropout: 0.1
+  image:
+    name: openai/clip-vit-base-patch32
+    embed_dim: 512
+    trainable_blocks: 2
+  fusion:
+    num_heads: 8
+    ffn_dim: 2048
+    dropout: 0.1
+  classifier:
+    hidden_dim: 256
+    dropout: 0.3
+    num_classes: 2
+  use_alpha: true            # concat CLIP similarity α to fused features
+
+training:
+  optimizer: adamw
+  weight_decay: 0.01
+  label_smoothing: 0.1
+  warmup_ratio: 0.1
+  grad_clip: 1.0
+  mixed_precision: true
+  gradient_checkpointing: true
+  early_stopping_patience: 2
+
+  stage1:                    # head warmup, encoders frozen
+    epochs: 1
+    lr: 1.0e-4
+  stage2:                    # encoder fine-tuning
+    epochs: 3
+    lr: 2.0e-5
+
+  # Per-GPU batch size — auto-overridden by gpu detection in train.py
+  batch_size:
+    T4: 16
+    L4: 32
+    A100: 64
+  grad_accum_steps: 2
+
+logging:
+  wandb_project: hemt-clip-fnd
+  wandb_entity: null         # set to your wandb username/team
+  log_every_n_steps: 50
+  sample_predictions_every: 500
+
+checkpointing:
+  dir: /content/drive/MyDrive/hemt-clip-fnd/checkpoints
+  save_every_epoch: true
+  keep_last_n: 2
+
+ablation:
+  variants: [text_only, image_only, concat_fusion, hemt_clip]

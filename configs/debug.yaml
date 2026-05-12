@@ -1,0 +1,30 @@
+# Tiny config for smoke tests — overfit a few hundred samples to verify the pipeline.
+# Inherit base.yaml mentally; only deltas listed here.
+
+seed: 42
+
+data:
+  hdf5_path: /content/drive/MyDrive/hemt-clip-fnd/data/fakeddit_debug.h5
+  num_samples: 500
+  num_workers: 0
+  pin_memory: false
+
+training:
+  stage1:
+    epochs: 1
+    lr: 1.0e-4
+  stage2:
+    epochs: 2
+    lr: 2.0e-5
+  batch_size:
+    T4: 8
+    L4: 8
+    A100: 8
+  grad_accum_steps: 1
+  early_stopping_patience: 1
+  mixed_precision: false
+  gradient_checkpointing: false
+
+logging:
+  wandb_project: hemt-clip-fnd-debug
+  log_every_n_steps: 10

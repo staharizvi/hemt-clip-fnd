@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Project artefacts (kept on Google Drive, not in git)
+checkpoints/*.pt
+checkpoints/*.pth
+checkpoints/*.bin
+*.h5
+*.hdf5
+
+# Raw data and downloaded images
+data/raw/
+data/images/
+data/*.tsv
+data/*.json
+
+# Outputs — keep dirs (via .gitkeep) but ignore generated artefacts
+outputs/**/*.png
+outputs/**/*.jpg
+outputs/**/*.pdf
+outputs/**/*.html
+outputs/**/*.svg
+!outputs/**/.gitkeep
+
+# Experiment tracking
+wandb/
+mlruns/
+
+# Secrets
+.env
+*.key
