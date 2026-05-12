@@ -99,10 +99,18 @@ def stratified_sample(df: pd.DataFrame, n: int, seed: int) -> pd.DataFrame:
     return pd.concat(parts).sample(frac=1, random_state=seed).reset_index(drop=True)
 
 
-def load_state(path: Path) -> set[str]:
+def load_state(path: Path, images_dir: Path) -> set[str]:
+    """IDs we can safely skip = listed in state file AND JPEG still on disk.
+
+    The state file lives on Drive (persists across sessions), but the JPEGs
+    live on Colab's local disk (wiped on disconnect). After a crash, only IDs
+    whose file is still present count as truly done — the rest must re-download.
+    """
     if not path.exists():
         return set()
-    return {line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()}
+    listed = {line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()}
+    have_files = {p.stem for p in images_dir.glob("*.jpg")}
+    return listed & have_files
 
 
 def append_state(path: Path, post_id: str) -> None:
@@ -153,8 +161,8 @@ def main() -> int:
     sample[["id", "image_url", "label", "text"]].to_csv(args.sample_csv, index=False)
     LOG.info("wrote sample CSV: %s", args.sample_csv)
 
-    done = load_state(args.state_file)
-    LOG.info("resume state: %d IDs already downloaded", len(done))
+    done = load_state(args.state_file, args.out_dir)
+    LOG.info("resume state: %d IDs already downloaded (verified on disk)", len(done))
 
     work = sample[~sample["id"].isin(done)]
     LOG.info("queueing %d new downloads (%d workers)", len(work), args.workers)
