@@ -26,5 +26,5 @@ training:
   gradient_checkpointing: false
 
 logging:
-  wandb_project: hemt-clip-fnd-debug
+  tensorboard_dir: /content/drive/MyDrive/hemt-clip-fnd/runs-debug
   log_every_n_steps: 10
