@@ -24,7 +24,10 @@ class TextEncoder(nn.Module):
         dropout: float = 0.1,
     ) -> None:
         super().__init__()
-        self.backbone = RobertaModel.from_pretrained(model_name)
+        # add_pooling_layer=False: the pooler isn't pretrained for roberta-base
+        # (no NSP objective), so HF warns about random init. We use [CLS] from
+        # last_hidden_state directly, so we don't need the pooler at all.
+        self.backbone = RobertaModel.from_pretrained(model_name, add_pooling_layer=False)
         hidden_dim = self.backbone.config.hidden_size  # 768 for roberta-base
 
         self._freeze(trainable_layers)
@@ -44,10 +47,6 @@ class TextEncoder(nn.Module):
         for i, layer in enumerate(self.backbone.encoder.layer):
             for p in layer.parameters():
                 p.requires_grad = i >= n_frozen
-        # Pooler is unused (we take [CLS] from last_hidden_state directly).
-        if self.backbone.pooler is not None:
-            for p in self.backbone.pooler.parameters():
-                p.requires_grad = False
 
     def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         out = self.backbone(input_ids=input_ids, attention_mask=attention_mask)
