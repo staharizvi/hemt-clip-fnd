@@ -1,6 +1,6 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** Model modules implemented; smoke test next.
+**Current phase:** Smoke test passed; real training loop next.
 **Last updated:** 2026-05-16
 
 ---
@@ -37,11 +37,30 @@
 
 ## Next (immediate)
 
-### Run the smoke test on Colab
-- `notebooks/02_smoke_test.ipynb` scaffolded: Colab setup → 500-sample train / 100-sample val subset (random.choice with SEED=42) → `hemt_clip` variant → AdamW(lr=1e-4) + fp16 autocast + GradScaler + grad-clip(1.0) → 5 epochs → pass/fail assertion (`train_acc > 0.85`).
-- Expected: epoch 1 ~55–65% train_acc, epoch 5 >90%; val_acc stays ~50% (only 500 train samples — generalisation isn't the goal here).
-- ~30–60s/epoch on T4. Total run ~5 min.
-- After it passes: build `training/train.py` (two-stage fine-tune, TensorBoard, per-epoch Drive checkpoints, resume).
+### Run full training on Colab — `notebooks/03_full_training.ipynb`
+- Open the notebook on a T4 runtime → Run All. Bootstrap cell (same as notebook 02) handles env vars, Drive mount, repo pull, deps, jax/flax removal, HDF5 → local SSD copy.
+- A second cell patches `configs/base.yaml`'s `hdf5_path` to `/content/fakeddit.h5` (in-place YAML edit) so training reads from local SSD instead of Drive.
+- TensorBoard cell opens inline against `/content/drive/MyDrive/hemt-clip-fnd/runs` BEFORE training so curves stream live.
+- Training cell: `!python -m training.train --variant hemt_clip`. Expected ~11 min/epoch on T4 for 12K samples → ~45 min wall-clock for the full 4-epoch budget (1 stage 1 + ≤3 stage 2).
+- Resume cell: globs the latest `_stage*_epoch*.pt` and shows the commented `!python -m training.train --variant hemt_clip --resume "{ckpt}"` line — uncomment if the runtime dies mid-run.
+
+### Done 2026-05-16 — Training loop (`training/train.py`)
+- Two-stage fine-tune: stage 1 freezes ALL encoder params (head warmup, lr=1e-4); stage 2 calls each encoder's `_freeze()` to restore last-N trainable (lr=2e-5). Optim + scheduler rebuilt fresh per stage.
+- fp16 autocast + `torch.cuda.amp.GradScaler`, AdamW + `transformers.get_linear_schedule_with_warmup` (warmup_ratio from cfg), grad-clip(1.0), grad-accum from cfg.
+- Gradient checkpointing toggled on both backbones if `cfg.training.gradient_checkpointing` is true.
+- Auto batch-size detection (T4/L4/A100 via `cuda.get_device_name`).
+- Atomic per-epoch ckpt (`.tmp` then `os.replace`), `cleanup_old_checkpoints` keeps last N. Separate `best.pt` on val-F1 improvement.
+- Full resume: model + optim + scheduler + scaler + RNG (torch/cuda/numpy/random) + `TrainState(stage, epoch, global_step, best_val_f1, epochs_since_improve)`. Stage-aware: if resumed mid-stage, optim/scheduler reload; if resumed post-stage-1, stage 1 is skipped.
+- TB logs: `train/{loss,lr}` per step (every `log_every_n_steps`), `train_epoch/{loss,acc}` and `val/{loss,acc,f1,prec,rec}` per epoch, weight+grad histograms per epoch.
+- Early stop (stage 2 only): val F1 patience from cfg.
+
+### Done 2026-05-16 — Smoke test
+- `notebooks/02_smoke_test.ipynb` ran on T4, full output committed.
+- 500-sample train / 100-sample val, `hemt_clip` variant, 5 epochs, **27s total**.
+- Final: train_loss=0.228 / train_acc=98.6% (passed >85% gate).
+- Val_acc held 67–80% (above chance — model learning real signal, not just memorising).
+- Val_loss climbed from epoch 3 onwards → expect early-stopping to fire around stage-2 epoch 2–3 on the real run.
+- Bootstrap cell added by user: env-var setup, idempotent clone/pull, `jax`/`flax` uninstall (they forced `numpy>=2` and broke pinned `numpy 1.26.4`), HDF5 copy from Drive to local SSD.
 
 ### Done 2026-05-16 — Alpha precomputation
 - `data/precompute_alpha.py` implemented (CLIPModel + CLIPTokenizer, fp16 autocast, resumable in-place write to `f['alpha']`).

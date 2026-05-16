@@ -12,7 +12,8 @@
       "Bash(awk 'NR<=15 || NR>=NR-5' \"notebooks/02_smoke_test.ipynb\")",
       "Bash(awk NR>=15 && NR<=25 {print NR\": \"$0} *)",
       "Bash(awk NR>=15 && NR<=30 *)",
-      "Bash(awk END{print NR} *)"
+      "Bash(awk END{print NR} *)",
+      "Bash(git pull *)"
     ]
   }
 }
