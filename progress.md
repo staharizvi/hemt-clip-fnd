@@ -1,7 +1,7 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** Data pipeline complete; alpha precomputation next.
-**Last updated:** 2026-05-13
+**Current phase:** Alpha precomputation script written; ready to run on Colab GPU.
+**Last updated:** 2026-05-16
 
 ---
 
@@ -38,10 +38,14 @@
 ## Next (immediate)
 
 ### Alpha precomputation
-- Write `data/precompute_alpha.py`: load CLIP text + vision encoders, run over the full HDF5 once, write cosine similarities into `f['alpha']`.
-- Needs **GPU runtime** (T4 is fine; will use ~1 compute unit).
-- Expected runtime: ~20–30 min on T4 for 17K samples.
-- After this: alpha column will be fully populated, dataset stops warning, training is unblocked.
+- `data/precompute_alpha.py` implemented:
+  - Loads `openai/clip-vit-base-patch32` via `transformers.CLIPModel`.
+  - Reads images directly from HDF5 (uint8 CHW), applies CLIP normalisation, tokenises with `CLIPTokenizer` (max_len=77).
+  - Computes cosine sim on L2-normalised text + image projection features; fp16 autocast on CUDA.
+  - In-place write to `f['alpha']`; resumes by default (only fills NaN rows), `--overwrite` to redo.
+  - Periodic `f.flush()` (every N batches) so a Colab disconnect costs at most one batch.
+- **Run next on a GPU runtime** (T4 fine, ~1 compute unit, expected ~20–30 min for 17K samples).
+- After this: alpha column fully populated, dataset stops warning, training unblocked.
 
 ---
 
