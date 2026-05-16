@@ -7,7 +7,11 @@
       "Bash(where py *)",
       "Bash(py --version)",
       "Bash(where python3 *)",
-      "Bash(python3 --version)"
+      "Bash(python3 --version)",
+      "Bash(awk 'END{print NR\" lines\"}' \"notebooks/02_smoke_test.ipynb\")",
+      "Bash(awk 'NR<=15 || NR>=NR-5' \"notebooks/02_smoke_test.ipynb\")",
+      "Bash(awk NR>=15 && NR<=25 {print NR\": \"$0} *)",
+      "Bash(awk NR>=15 && NR<=30 *)"
     ]
   }
 }
