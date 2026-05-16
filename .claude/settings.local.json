@@ -3,7 +3,11 @@
     "allow": [
       "WebSearch",
       "WebFetch(domain:github.com)",
-      "Bash(grep -n -i -E \"alpha|precompute|clip.{0,20}simil\" \"D:\\\\8th Semester\\\\FYP\\\\hemt-clip-fnd\\\\HEMT_CLIP_Implementation_Blueprint.md\")"
+      "Bash(grep -n -i -E \"alpha|precompute|clip.{0,20}simil\" \"D:\\\\8th Semester\\\\FYP\\\\hemt-clip-fnd\\\\HEMT_CLIP_Implementation_Blueprint.md\")",
+      "Bash(where py *)",
+      "Bash(py --version)",
+      "Bash(where python3 *)",
+      "Bash(python3 --version)"
     ]
   }
 }
