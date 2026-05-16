@@ -1,6 +1,6 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** Smoke test passed; real training loop next.
+**Current phase:** hemt_clip variant trained (val F1=0.80); ablation runner ready for the other 3 variants.
 **Last updated:** 2026-05-16
 
 ---
@@ -37,12 +37,31 @@
 
 ## Next (immediate)
 
-### Run full training on Colab — `notebooks/03_full_training.ipynb`
-- Open the notebook on a T4 runtime → Run All. Bootstrap cell (same as notebook 02) handles env vars, Drive mount, repo pull, deps, jax/flax removal, HDF5 → local SSD copy.
-- A second cell patches `configs/base.yaml`'s `hdf5_path` to `/content/fakeddit.h5` (in-place YAML edit) so training reads from local SSD instead of Drive.
-- TensorBoard cell opens inline against `/content/drive/MyDrive/hemt-clip-fnd/runs` BEFORE training so curves stream live.
-- Training cell: `!python -m training.train --variant hemt_clip`. Expected ~11 min/epoch on T4 for 12K samples → ~45 min wall-clock for the full 4-epoch budget (1 stage 1 + ≤3 stage 2).
-- Resume cell: globs the latest `_stage*_epoch*.pt` and shows the commented `!python -m training.train --variant hemt_clip --resume "{ckpt}"` line — uncomment if the runtime dies mid-run.
+### Run the ablation — 3 remaining variants
+- In `notebooks/03_full_training.ipynb` (after the bootstrap + cfg-patch cells), add a new code cell:
+  ```
+  !python -m training.ablation_runner --variants text_only image_only concat_fusion
+  ```
+- Runner will subprocess `train.py` for each variant in order (~5–6 min each on T4), skip `hemt_clip` since its best.pt already exists in the last 24h, then write `outputs/ablation_summary_{ts}.{csv,md}`.
+- Expected total: **~18–20 min**.
+- After: 4-row comparison table is ready for the report's §6 Results chapter. Then `training/evaluate.py` for held-out test metrics (confusion matrix, ROC, per-class P/R).
+
+### Done 2026-05-16 — Full HEMT-CLIP training run
+- `notebooks/03_full_training.ipynb` ran on T4, **6 min 24s total wall-clock** (overestimated 45 min by 7×).
+- Stage 1 (1 ep, lr=1e-4, encoders frozen): val F1=0.7465.
+- Stage 2 (3 ep, lr=2e-5, last-2-layers unfrozen): val F1 0.7529 → **0.8004** (best) → 0.7976.
+- No early stop (patience=2, only 1 epoch w/o improvement).
+- Tiny train/val gap (0.801 vs 0.794) → no overfitting on 12K samples; could push further but diminishing returns.
+- Fine-tuning premium: +5.4 pt F1 over frozen-encoder head-only baseline (0.747 → 0.800) — useful for report's "why fine-tune" argument.
+- Best ckpt: `hemt_hemt_clip_20260516-1428_best.pt` on Drive.
+- Cosmetic warnings (no functional impact): `torch.cuda.amp.GradScaler` deprecation, gradient-checkpointing "no inputs require grad" warning from frozen early layers. Easy cleanups for later.
+
+### Done 2026-05-16 — Ablation runner (`training/ablation_runner.py`)
+- Subprocess-per-variant orchestration (`python -m training.train --variant X` × 4) — clean GPU memory between runs, isolated failure surface.
+- Skip-if-recent default: looks for `*_{variant}_*_best.pt` mtime within 24h. Override with `--force`.
+- Per-variant logfiles tee'd to `<runs>/../ablation_logs/{variant}_{ts}.log` alongside live console stream.
+- Summary writer: reads `best_val_f1` from each `best.pt`'s embedded `TrainState`, emits `outputs/ablation_summary_{ts}.{csv,md}` with variant / F1 / stage / epoch / step / ckpt name.
+- CLI: `--variants V1 V2 ...` (subset), `--force` (re-train all), `--skip-summary` (partial runs).
 
 ### Done 2026-05-16 — Training loop (`training/train.py`)
 - Two-stage fine-tune: stage 1 freezes ALL encoder params (head warmup, lr=1e-4); stage 2 calls each encoder's `_freeze()` to restore last-N trainable (lr=2e-5). Optim + scheduler rebuilt fresh per stage.
