@@ -37,9 +37,11 @@
 
 ## Next (immediate)
 
-### Smoke test (`notebooks/02_smoke_test.ipynb`)
-- Overfit ~500 samples on the `hemt_clip` variant to verify the full pipeline (dataset → model → loss → backward → optimiser) runs end-to-end before burning compute units on the real training run.
-- Goal: training loss must drop near zero in a few epochs. If it doesn't, there's a wiring bug somewhere.
+### Run the smoke test on Colab
+- `notebooks/02_smoke_test.ipynb` scaffolded: Colab setup → 500-sample train / 100-sample val subset (random.choice with SEED=42) → `hemt_clip` variant → AdamW(lr=1e-4) + fp16 autocast + GradScaler + grad-clip(1.0) → 5 epochs → pass/fail assertion (`train_acc > 0.85`).
+- Expected: epoch 1 ~55–65% train_acc, epoch 5 >90%; val_acc stays ~50% (only 500 train samples — generalisation isn't the goal here).
+- ~30–60s/epoch on T4. Total run ~5 min.
+- After it passes: build `training/train.py` (two-stage fine-tune, TensorBoard, per-epoch Drive checkpoints, resume).
 
 ### Done 2026-05-16 — Alpha precomputation
 - `data/precompute_alpha.py` implemented (CLIPModel + CLIPTokenizer, fp16 autocast, resumable in-place write to `f['alpha']`).
