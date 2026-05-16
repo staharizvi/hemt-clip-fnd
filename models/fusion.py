@@ -1,13 +1,65 @@
 """Cross-attention fusion module.
 
-nn.MultiheadAttention(embed_dim=512, num_heads=8, dropout=0.1, batch_first=True)
-    Q = text_features, K = V = image_features (patch tokens).
-Residual connection + LayerNorm after attention.
-Position-wise FFN: Linear(512, 2048) → GELU → Dropout → Linear(2048, 512)
-                   + residual + LayerNorm.
+Q = text features  (B, 1, 512)
+K = V = image patch features  (B, P, 512)
 
-Returns the fused 512-dim representation AND the attention weights
-(averaged across heads externally for explainability viz).
+nn.MultiheadAttention(embed_dim=512, num_heads=8, dropout=0.1, batch_first=True)
+    + residual + LayerNorm
+Position-wise FFN: Linear(512, 2048) -> GELU -> Dropout -> Linear(2048, 512)
+    + residual + LayerNorm
+
+Returns:
+    fused : (B, 512)
+    attn  : (B, num_heads, 1, P) — per-head, kept un-averaged for the
+            explainability viz; trainer can mean over heads for logging.
 """
 
-# TODO: implement CrossAttentionFusion(nn.Module)
+from __future__ import annotations
+
+import torch
+import torch.nn as nn
+
+
+class CrossAttentionFusion(nn.Module):
+    def __init__(
+        self,
+        embed_dim: int = 512,
+        num_heads: int = 8,
+        ffn_dim: int = 2048,
+        dropout: float = 0.1,
+    ) -> None:
+        super().__init__()
+        self.attn = nn.MultiheadAttention(
+            embed_dim=embed_dim,
+            num_heads=num_heads,
+            dropout=dropout,
+            batch_first=True,
+        )
+        self.norm1 = nn.LayerNorm(embed_dim)
+        self.ffn = nn.Sequential(
+            nn.Linear(embed_dim, ffn_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(ffn_dim, embed_dim),
+        )
+        self.norm2 = nn.LayerNorm(embed_dim)
+        self.dropout = nn.Dropout(dropout)
+        self.out_dim = embed_dim
+
+    def forward(
+        self,
+        text_feats: torch.Tensor,    # (B, 512)
+        image_patches: torch.Tensor, # (B, P, 512)
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        q = text_feats.unsqueeze(1)              # (B, 1, 512)
+        attn_out, attn_weights = self.attn(
+            query=q,
+            key=image_patches,
+            value=image_patches,
+            need_weights=True,
+            average_attn_weights=False,          # keep per-head for viz: (B, H, 1, P)
+        )
+        x = self.norm1(q + self.dropout(attn_out))   # (B, 1, 512)
+        x = self.norm2(x + self.dropout(self.ffn(x)))
+        fused = x.squeeze(1)                          # (B, 512)
+        return fused, attn_weights

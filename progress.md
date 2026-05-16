@@ -1,6 +1,6 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** Alpha precomputation script written; ready to run on Colab GPU.
+**Current phase:** Model modules implemented; smoke test next.
 **Last updated:** 2026-05-16
 
 ---
@@ -37,15 +37,20 @@
 
 ## Next (immediate)
 
-### Alpha precomputation
-- `data/precompute_alpha.py` implemented:
-  - Loads `openai/clip-vit-base-patch32` via `transformers.CLIPModel`.
-  - Reads images directly from HDF5 (uint8 CHW), applies CLIP normalisation, tokenises with `CLIPTokenizer` (max_len=77).
-  - Computes cosine sim on L2-normalised text + image projection features; fp16 autocast on CUDA.
-  - In-place write to `f['alpha']`; resumes by default (only fills NaN rows), `--overwrite` to redo.
-  - Periodic `f.flush()` (every N batches) so a Colab disconnect costs at most one batch.
-- **Run next on a GPU runtime** (T4 fine, ~1 compute unit, expected ~20–30 min for 17K samples).
-- After this: alpha column fully populated, dataset stops warning, training unblocked.
+### Smoke test (`notebooks/02_smoke_test.ipynb`)
+- Overfit ~500 samples on the `hemt_clip` variant to verify the full pipeline (dataset → model → loss → backward → optimiser) runs end-to-end before burning compute units on the real training run.
+- Goal: training loss must drop near zero in a few epochs. If it doesn't, there's a wiring bug somewhere.
+
+### Done 2026-05-16 — Alpha precomputation
+- `data/precompute_alpha.py` implemented (CLIPModel + CLIPTokenizer, fp16 autocast, resumable in-place write to `f['alpha']`).
+- Ran on T4: 17,149 rows, **NaN=0**, min=0.076 / mean=0.267 / max=0.437 — healthy band for ViT-B/32 on Fakeddit.
+
+### Done 2026-05-16 — Model modules
+- `models/text_encoder.py` — RoBERTa-base with embeddings + first 10 layers frozen, last 2 + projection (768→512, LayerNorm, Dropout) trainable. Outputs `[CLS]` projected to 512.
+- `models/image_encoder.py` — CLIPVisionModel (ViT-B/32) with patch embedding + first 10 blocks frozen, last 2 + post_layernorm trainable. Local 768→512 projections for both pooled CLS and patch tokens (so cross-attention K/V are already in the 512 space). Returns `ImageEncoderOutput(pooled, patches)`.
+- `models/fusion.py` — `CrossAttentionFusion`: 8-head MHA (text Q over patch K/V) + residual/LN + FFN(512→2048→512) + residual/LN. Returns `(fused (B,512), attn (B, H, 1, P))` un-averaged for XAI.
+- `models/classifier.py` — `ClassifierHead(in_dim, 256, 2)`, in_dim wired by HEMTCLIP based on variant.
+- `models/hemt_clip.py` — Assembler with variant switch over `{text_only, image_only, concat_fusion, hemt_clip}`. `use_alpha` auto-disabled for unimodal baselines. `build_from_config(cfg)` factory reads `configs/base.yaml`'s `model` block.
 
 ---
 
