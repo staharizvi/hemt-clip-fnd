@@ -1,11 +1,23 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** hemt_clip variant trained (val F1=0.80); ablation runner ready for the other 3 variants.
-**Last updated:** 2026-05-16
+**Current phase:** v1 ablation done (`hemt_clip` peaked at val F1=0.8004 but undertrained — variants still improving at ep3). Config tuned for v2 re-run; pending re-execution on Colab.
+**Last updated:** 2026-05-17
 
 ---
 
 ## Done
+
+### 2026-05-17 — Ablation matrix complete (3 remaining variants)
+- Ran `training.ablation_runner` on T4 for `text_only`, `image_only`, `concat_fusion` — **16.6 min total** wall-clock (5–6 min each).
+- Final val F1 ordering: `text_only` 0.7654 < `image_only` 0.7775 < `concat_fusion` 0.7983 < `hemt_clip` 0.8004.
+- **Cross-attention beats concat by only +0.21 pt** — architectural complexity justified primarily by intrinsic XAI (attention heatmaps), not raw accuracy. Concat-only would be the pragmatic baseline; HEMT-CLIP earns its keep through explainability.
+- **Multimodal premium**: +2.1 pt over best unimodal (`image_only` → `concat_fusion`).
+- **Image > Text** on Fakeddit: 0.7775 vs 0.7654 — titles alone are weaker than thumbnails for binary fake-vs-real.
+- No variant triggered early stopping; all reached the max stage-2 epoch budget.
+- Per-variant logs: `runs/../ablation_logs/{variant}_20260517-*.log`. Summary: `outputs/ablation_summary_20260517-1355.{csv,md}` (3-row, baselines only — 4-row table built by hand in `notebooks/03_full_training.ipynb` for the report).
+- Trainable-param counts (Stage 2, for the report's architecture comparison): text_only 14.70M, image_only 15.10M, concat_fusion 29.80M, hemt_clip 32.82M.
+
+---
 
 ### 2026-05-12 — Project scaffolding
 - Full repo structure per Blueprint §4 (configs, data, models, explainability, training, app, notebooks, outputs).
@@ -37,14 +49,20 @@
 
 ## Next (immediate)
 
-### Run the ablation — 3 remaining variants
-- In `notebooks/03_full_training.ipynb` (after the bootstrap + cfg-patch cells), add a new code cell:
-  ```
-  !python -m training.ablation_runner --variants text_only image_only concat_fusion
-  ```
-- Runner will subprocess `train.py` for each variant in order (~5–6 min each on T4), skip `hemt_clip` since its best.pt already exists in the last 24h, then write `outputs/ablation_summary_{ts}.{csv,md}`.
-- Expected total: **~18–20 min**.
-- After: 4-row comparison table is ready for the report's §6 Results chapter. Then `training/evaluate.py` for held-out test metrics (confusion matrix, ROC, per-class P/R).
+### Re-run ablation with tuned config (v2)
+- Patched `configs/base.yaml` on 2026-05-17: `trainable_layers 2→4`, `trainable_blocks 2→4`, `stage2.epochs 3→6`, `early_stopping_patience 2→3`, `label_smoothing 0.1→0.0`.
+- Re-run via `!python -m training.ablation_runner --force` in `notebooks/03_full_training.ipynb` (cell added 2026-05-17). `--force` required because v1 best.pt files are within the 24h skip window.
+- Expected ~45–55 min on T4. Target: `hemt_clip` val F1 0.83–0.85 (v1 was 0.8004).
+- After re-run, refresh the v1 results table in the notebook with v2 numbers (mark v1 as historical) and re-stamp the `outputs/ablation_summary_*` files.
+
+### Held-out test evaluation (`notebooks/04_evaluation.ipynb` → `training/evaluate.py`)
+- Load each variant's `best.pt`, run on `test` split (n=2573), emit per-variant test_{acc, f1, prec, rec} + confusion matrix PNG + ROC curve PNG.
+- 4-row test-set comparison table → drops into Chapter 6 alongside the val table.
+- ~3–4 min total on T4 (inference only, no training).
+
+### Then: XAI artefacts (Chapter 6 figures)
+- `explainability/attention_viz.py` — pick ~10 test examples (mix of correct/incorrect, fake/real), extract `attn` from `CrossAttentionFusion`, reshape `(H, 1, P)` → 7×7 patch grid, overlay heatmap on the 224×224 image.
+- `explainability/shap_text.py` — KernelExplainer over text-only branch on ~30 samples, save token-importance bar plots.
 
 ### Done 2026-05-16 — Full HEMT-CLIP training run
 - `notebooks/03_full_training.ipynb` ran on T4, **6 min 24s total wall-clock** (overestimated 45 min by 7×).

@@ -21,12 +21,12 @@ model:
     name: roberta-base
     hidden_dim: 768
     proj_dim: 512
-    trainable_layers: 2     # last N transformer layers
+    trainable_layers: 4     # last N transformer layers (bumped 2→4 on 2026-05-17 for headroom)
     dropout: 0.1
   image:
     name: openai/clip-vit-base-patch32
     embed_dim: 512
-    trainable_blocks: 2
+    trainable_blocks: 4     # bumped 2→4 on 2026-05-17 for headroom
   fusion:
     num_heads: 8
     ffn_dim: 2048
@@ -40,18 +40,18 @@ model:
 training:
   optimizer: adamw
   weight_decay: 0.01
-  label_smoothing: 0.1
+  label_smoothing: 0.0       # dropped 0.1→0.0 on 2026-05-17 (capping val_loss, no class noise to smooth over)
   warmup_ratio: 0.1
   grad_clip: 1.0
   mixed_precision: true
   gradient_checkpointing: true
-  early_stopping_patience: 2
+  early_stopping_patience: 3 # bumped 2→3 on 2026-05-17 alongside longer stage 2
 
   stage1:                    # head warmup, encoders frozen
     epochs: 1
     lr: 1.0e-4
   stage2:                    # encoder fine-tuning
-    epochs: 3
+    epochs: 6                # bumped 3→6 on 2026-05-17 — variants were still improving at ep3
     lr: 2.0e-5
 
   # Per-GPU batch size — auto-overridden by gpu detection in train.py
