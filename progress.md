@@ -1,11 +1,30 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** v3 (fusion.dropout=0.2) fixed the overfit shape but plateaued *lower* at 0.8012. Image-backbone limit suspected; swapping CLIP ViT-B/32 → B/16 for v4 (4× finer patch grid).
+**Current phase:** v4 (B/16 swap) **paused** — code committed (9812f31), but alpha not yet re-precomputed and ablation not re-run. Pivoting to fill in notebook deliverables (01–03) before resuming v4 on Colab.
 **Last updated:** 2026-05-30
 
 ---
 
 ## Done
+
+### 2026-05-30 — Pivot: notebook implementation pass (01–03)
+Paused v4 (B/16) work to bring the notebook deliverables up to report quality. Notebooks 02 and 03 are implemented and have committed outputs; notebook 01 was a one-cell stub. Implementing 01 first, then a review/tidy pass on 02 and 03 — they need narrative cleanup (e.g. 03 has v1 markdown headers next to v2/v3 outputs) but no rewrite.
+
+**v4 state on `main` (commit 9812f31):**
+- `configs/base.yaml` — `model.image.name: openai/clip-vit-base-patch16` (was patch32).
+- `models/image_encoder.py` — docstring generalized for patch-count-agnostic interface.
+- Not yet run: alpha re-precompute (B/16 embeddings differ from B/32), and ablation re-run for the three image-using variants.
+
+**Notebook 01 — Dataset Characterization (new, implementation only — outputs pending Colab run):**
+- 15 cells (7 markdown + 8 code). Target audience: examiner reading Chapter 4.
+- Reads the packed HDF5 directly (no raw Fakeddit metadata needed — only the HDF5 survived).
+- Sections: HDF5 schema dump, split sizes + class balance (table + bar chart), title token-length distribution (justifies `max_text_len=128`), α distribution overall + by label (frames α as a weak-but-useful extra feature), 8-panel sample grid (4 real / 4 fake from train, seed=42), and a Chapter-4 take-aways block.
+- Bootstrap cell reused verbatim from notebook 02 — same Drive-mount + repo-pull pattern, idempotent.
+- Reproducibility: `RNG = np.random.default_rng(42)` for the sample picks so the figure is stable across re-runs.
+
+**Next:** user runs 01 on Colab (no GPU needed) to populate outputs, then we review 02 and 03 for narrative consistency before resuming v4.
+
+---
 
 ### 2026-05-30 — v3 result + v4 backbone swap (ViT-B/32 → ViT-B/16)
 **v3 hemt_clip run (only the cross-attention variant; baselines unchanged from v2):**
