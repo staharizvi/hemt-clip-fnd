@@ -1,11 +1,38 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** v1 ablation done (`hemt_clip` peaked at val F1=0.8004 but undertrained — variants still improving at ep3). Config tuned for v2 re-run; pending re-execution on Colab.
-**Last updated:** 2026-05-17
+**Current phase:** v2 ablation done. `hemt_clip` plateaued at val F1=0.8069 (target was 0.83–0.85) and is now *behind* `concat_fusion` (0.8133). Patched `fusion.dropout 0.1→0.2` for v3 to fight overfit in the cross-attention block.
+**Last updated:** 2026-05-30
 
 ---
 
 ## Done
+
+### 2026-05-30 — v2 ablation results in, fusion-dropout patch (v3)
+**v2 vs v1 deltas (all 4 variants, 6-epoch stage 2, last-4 encoder layers, label_smoothing=0):**
+
+| Variant | v1 best F1 | v2 best F1 | Δ | Best @ |
+|---|---|---|---|---|
+| text_only | 0.7654 | 0.7702 | +0.5 pt | S2 ep3 |
+| image_only | 0.7775 | 0.7823 | +0.5 pt | S2 ep4 |
+| concat_fusion | 0.7983 | **0.8133** | **+1.5 pt** | S2 ep5 |
+| hemt_clip | 0.8004 | 0.8069 | +0.7 pt | S2 ep3 |
+
+**Interpretation:**
+- **v2 missed the 0.83–0.85 target on hemt_clip** — longer schedule + more trainable layers only bought +0.7 pt.
+- **Concat now beats hemt_clip** by +0.64 pt. Narrative problem for the report: the headline architecture is no longer the F1 leader.
+- **Overfit signal in hemt_clip:** val F1 peaks at S2 ep3 (0.8069) and *declines* through ep6 (0.8048) while train_acc keeps climbing (0.802→0.826). Same shape as v1, just one more epoch. Early-stop fired at ep6.
+- **Concat is still learning at ep5** (0.8133) — extra epochs helped it cleanly, no overfit shape.
+- text_only / image_only barely moved — at their unimodal ceilings on Fakeddit titles+thumbnails.
+
+**Hypothesis:** Cross-attention adds ~3M trainable params on top of concat; the existing `fusion.dropout=0.1` isn't enough to regularize the extra capacity on 12K samples.
+
+**Patch (configs/base.yaml):** `model.fusion.dropout 0.1 → 0.2`. Targets only `hemt_clip` (only variant using `CrossAttentionFusion`); other variants unchanged so v2 numbers remain valid for them. No other config changes (kept v2's 4 trainable layers, 6 stage-2 epochs, ls=0.0, patience=3).
+
+**Expected:** hemt_clip val F1 0.81–0.83, with peak shifted to S2 ep4–5 instead of ep3 (regularization should delay overfit). If it works, hemt_clip closes the gap with concat or pulls ahead. If it doesn't move, the next lever is per-param-group LR (lower LR on fusion only) or seed ensemble.
+
+**Re-run:** Just `hemt_clip` this time — `!python -m training.ablation_runner --variants hemt_clip --force` on Colab. ~12–15 min on T4. No need to re-run the three baselines; their numbers are stable.
+
+---
 
 ### 2026-05-17 — Ablation matrix complete (3 remaining variants)
 - Ran `training.ablation_runner` on T4 for `text_only`, `image_only`, `concat_fusion` — **16.6 min total** wall-clock (5–6 min each).

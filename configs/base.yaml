@@ -30,7 +30,7 @@ model:
   fusion:
     num_heads: 8
     ffn_dim: 2048
-    dropout: 0.1
+    dropout: 0.2             # bumped 0.1→0.2 on 2026-05-30 — v2 hemt_clip peaked at S2 ep3 then drifted down while train_acc kept climbing (overfit in fusion block, only variant using it)
   classifier:
     hidden_dim: 256
     dropout: 0.3
