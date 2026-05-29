@@ -15,14 +15,28 @@ Paused v4 (B/16) work to bring the notebook deliverables up to report quality. N
 - `models/image_encoder.py` — docstring generalized for patch-count-agnostic interface.
 - Not yet run: alpha re-precompute (B/16 embeddings differ from B/32), and ablation re-run for the three image-using variants.
 
-**Notebook 01 — Dataset Characterization (new, implementation only — outputs pending Colab run):**
+**Notebook 01 — Dataset Characterization (implemented, run on Colab, evaluated):**
 - 15 cells (7 markdown + 8 code). Target audience: examiner reading Chapter 4.
 - Reads the packed HDF5 directly (no raw Fakeddit metadata needed — only the HDF5 survived).
 - Sections: HDF5 schema dump, split sizes + class balance (table + bar chart), title token-length distribution (justifies `max_text_len=128`), α distribution overall + by label (frames α as a weak-but-useful extra feature), 8-panel sample grid (4 real / 4 fake from train, seed=42), and a Chapter-4 take-aways block.
 - Bootstrap cell reused verbatim from notebook 02 — same Drive-mount + repo-pull pattern, idempotent.
 - Reproducibility: `RNG = np.random.default_rng(42)` for the sample picks so the figure is stable across re-runs.
 
-**Next:** user runs 01 on Colab (no GPU needed) to populate outputs, then we review 02 and 03 for narrative consistency before resuming v4.
+**Numbers from the Colab run (commit d35f37a):**
+- Total samples: 17,149. Splits 12,003 / 2,573 / 2,573. Class balance 50.83 / 49.17 (real / fake), preserved across splits.
+- Title token-lengths (RoBERTa tokenizer, incl. special): median 10, p90/p95/p99 = 19 / 22 / 35, max 71. Truncation at `max_text_len=128` is 0% — cap is ~2× the longest title.
+- α (CLIP ViT-B/32 cosine sim): min 0.076, max 0.437, mean 0.267, std 0.051. NaN=0.
+- File size: 1.94 GB gzip-4 compressed.
+
+**Key Chapter-4 finding (new — not in the original take-aways):** α by label shows **fake mean=0.290 vs real mean=0.244** (Δ=+0.046, ~1 std apart). Fake posts have *higher* mean CLIP text-image agreement than real ones — counter-intuitive at first read, but consistent with Fakeddit's composition: mislabeled posts and satire typically pair on-topic imagery with dramatic captions, while real news often pairs generic stock photos with specific headlines. Heavy distribution overlap means α is still a weak predictor in isolation, but the consistent directional signal is what makes α non-trivial as an extra feature (and what justifies feeding it concatenated to the fused vector rather than as a fusion gate).
+
+**Polish edits applied (notebook 01 cells `titles-code`, `alpha-code`, `takeaways-md`):**
+- Take-aways markdown: updated median/p99 numbers to actuals (10 / 35, not the ~12 / ~30 I had drafted from memory), and added the fake>real α observation as a substantive bullet.
+- `titles-code`: suppressed two HuggingFace warnings (`resume_download` FutureWarning, `HF_TOKEN` UserWarning) — cosmetic noise in the committed output.
+- `alpha-code`: added an explicit Δ-mean print so the fake>real direction surfaces in the cell output, not just in the take-aways markdown.
+- Pending: re-run cells 9 (`titles-code`) and 11 (`alpha-code`) on Colab to refresh their outputs against the new source. Both are CPU-only and complete in seconds.
+
+**Next:** after the 2-cell re-run, review pass on notebook 02 for narrative consistency, then notebook 03, then resume v4 (B/16) on Colab.
 
 ---
 

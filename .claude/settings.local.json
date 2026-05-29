@@ -15,7 +15,8 @@
       "Bash(awk END{print NR} *)",
       "Bash(git pull *)",
       "Bash(python *)",
-      "Bash(py *)"
+      "Bash(py *)",
+      "PowerShell($nb = Get-Content notebooks/01_data_exploration.ipynb -Raw | ConvertFrom-Json; foreach \\($i in @\\(7,9,11\\)\\) { Write-Output \"==== Cell $i \\($\\($nb.cells[$i].id\\)\\) ====\"; foreach \\($out in $nb.cells[$i].outputs\\) { if \\($out.output_type -eq 'stream'\\) { Write-Output \\($out.text -join ''\\) } } })"
     ]
   }
 }
