@@ -1,16 +1,17 @@
-"""CLIP ViT-B/32 image encoder (vision tower only).
+"""CLIP ViT image encoder (vision tower only).
 
-Base: openai/clip-vit-base-patch32.
+Backbone is configurable via `model_name` — both ViT-B/32 (49 patches) and
+ViT-B/16 (196 patches) share hidden_dim=768, so the module is agnostic to
+patch count; cross-attention K/V just sees a longer sequence.
 Input: 224x224 RGB, normalised with CLIP mean/std (done in the dataset).
-Frozen: patch embedding + first 10 transformer blocks.
-Trainable: last 2 transformer blocks.
+Frozen: patch embedding + all but the last `trainable_blocks` transformer blocks.
 
 Returns BOTH:
-    pooled  : (B, 512)         — CLS token, projected, for image_only / concat fusion.
-    patches : (B, P, 512)      — patch tokens (P=49 for 224/32), projected,
-                                  used as K/V in cross-attention.
+    pooled  : (B, proj_dim)        — CLS token, projected, for image_only / concat fusion.
+    patches : (B, P, proj_dim)     — patch tokens, projected, used as K/V in cross-attention.
+                                     P = (image_size / patch_size)^2.
 
-The projections are local Linear(768 -> 512) layers (not CLIP's
+The projections are local Linear(768 -> proj_dim) layers (not CLIP's
 visual_projection) so the module is self-contained and the pooled and
 patch streams can be tuned independently during fine-tuning.
 """
@@ -40,7 +41,7 @@ class ImageEncoder(nn.Module):
     ) -> None:
         super().__init__()
         self.backbone = CLIPVisionModel.from_pretrained(model_name)
-        hidden_dim = self.backbone.config.hidden_size  # 768 for ViT-B/32
+        hidden_dim = self.backbone.config.hidden_size  # 768 for both ViT-B/32 and ViT-B/16
 
         self._freeze(trainable_blocks)
 

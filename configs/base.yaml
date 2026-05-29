@@ -24,7 +24,7 @@ model:
     trainable_layers: 4     # last N transformer layers (bumped 2→4 on 2026-05-17 for headroom)
     dropout: 0.1
   image:
-    name: openai/clip-vit-base-patch32
+    name: openai/clip-vit-base-patch16   # swapped B/32 → B/16 on 2026-05-30 for 4× finer patch grid (49 → 196 tokens); v3 regularization plateaued at 0.8012, swapping the backbone is the next lever
     embed_dim: 512
     trainable_blocks: 4     # bumped 2→4 on 2026-05-17 for headroom
   fusion:

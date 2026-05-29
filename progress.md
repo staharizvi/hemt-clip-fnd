@@ -1,11 +1,53 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** v2 ablation done. `hemt_clip` plateaued at val F1=0.8069 (target was 0.83–0.85) and is now *behind* `concat_fusion` (0.8133). Patched `fusion.dropout 0.1→0.2` for v3 to fight overfit in the cross-attention block.
+**Current phase:** v3 (fusion.dropout=0.2) fixed the overfit shape but plateaued *lower* at 0.8012. Image-backbone limit suspected; swapping CLIP ViT-B/32 → B/16 for v4 (4× finer patch grid).
 **Last updated:** 2026-05-30
 
 ---
 
 ## Done
+
+### 2026-05-30 — v3 result + v4 backbone swap (ViT-B/32 → ViT-B/16)
+**v3 hemt_clip run (only the cross-attention variant; baselines unchanged from v2):**
+
+| Stage | Epoch | val F1 | train_acc | Note |
+|---|---|---|---|---|
+| S1 | 1 | 0.7447 | 0.675 | head warmup |
+| S2 | 1 | 0.7487 | 0.759 | |
+| S2 | 2 | 0.7963 | 0.784 | |
+| S2 | 3 | 0.7992 | 0.800 | |
+| S2 | 4 | 0.7986 | 0.812 | |
+| S2 | 5 | 0.8008 | 0.819 | |
+| S2 | 6 | **0.8012** | 0.821 | best — no early stop |
+
+**Comparison hemt_clip across runs:**
+
+| Run | fusion.dropout | Best F1 | Peak @ | Trajectory |
+|---|---|---|---|---|
+| v1 (3 epochs) | 0.1 | 0.8004 | S2 ep2 | peaks early, runs out of epochs |
+| v2 (6 epochs) | 0.1 | 0.8069 | S2 ep3 | peaks ep3, declines ep4–6 (overfit) |
+| v3 (6 epochs) | 0.2 | 0.8012 | S2 ep6 | monotonic climb, no overfit, lower plateau |
+
+**Interpretation:** The dropout patch worked *structurally* — overfit shape gone, train/val gap narrower, val F1 climbed monotonically through ep6 with no early stop. But absolute F1 dropped 0.57 pt because we over-regularized: the model has less effective capacity now. Combined with v2 result, this tells us the model is **not generalization-limited** — it's **architecturally capped** on the input modality. Cutting capacity (more dropout) makes it worse; the next lever has to add *information*, not regularization.
+
+**Hypothesis for v4:** The CLIP ViT-B/32 backbone gives 49 patch tokens (7×7 grid) — coarse for cross-attention to localize. ViT-B/16 gives 196 tokens (14×14 grid), 4× finer spatial resolution, which should help the fusion module pick up finer image cues that correlate with title misalignment (the signal Fakeddit's binary task actually rewards).
+
+**Changes for v4 (configs/base.yaml + image_encoder.py docstring):**
+- `model.image.name`: `openai/clip-vit-base-patch32` → **`openai/clip-vit-base-patch16`**
+- `model.fusion.dropout`: kept at **0.2** (v3 trajectory was clean; revisit if v4 overfits)
+- All other v2/v3 hyperparams unchanged.
+- Image encoder docstring generalized — both backbones share hidden_dim=768, so the module is patch-count-agnostic; cross-attention K/V just sees a longer sequence.
+
+**Re-precompute alpha (required):** existing `f['alpha']` was computed with B/32; B/16 produces different CLIP embeddings, so alpha values would be inconsistent. Re-run with `--model openai/clip-vit-base-patch16 --overwrite`. Expected ~25–30 min on T4 for 17K rows (B/16 is ~2× slower than B/32).
+
+**Re-run variants:**
+- `text_only` — **not re-run**; doesn't touch the image backbone. v2 number (0.7702) stands.
+- `image_only`, `concat_fusion`, `hemt_clip` — re-run (~15 min × 3 = ~45 min on T4 with B/16's larger vision tower).
+- Total Colab budget for v4: ~25 + 45 = **~70 min**.
+
+**Realistic target:** hemt_clip val F1 0.82–0.84. If B/16 doesn't break 0.81, the F1 ceiling on Fakeddit titles+thumbnails is genuinely architectural and we accept it for the report — pivot Ch. 6 narrative to XAI as the headline contribution.
+
+---
 
 ### 2026-05-30 — v2 ablation results in, fusion-dropout patch (v3)
 **v2 vs v1 deltas (all 4 variants, 6-epoch stage 2, last-4 encoder layers, label_smoothing=0):**
