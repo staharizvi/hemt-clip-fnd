@@ -16,7 +16,10 @@
       "Bash(git pull *)",
       "Bash(python *)",
       "Bash(py *)",
-      "PowerShell($nb = Get-Content notebooks/01_data_exploration.ipynb -Raw | ConvertFrom-Json; foreach \\($i in @\\(7,9,11\\)\\) { Write-Output \"==== Cell $i \\($\\($nb.cells[$i].id\\)\\) ====\"; foreach \\($out in $nb.cells[$i].outputs\\) { if \\($out.output_type -eq 'stream'\\) { Write-Output \\($out.text -join ''\\) } } })"
+      "PowerShell($nb = Get-Content notebooks/01_data_exploration.ipynb -Raw | ConvertFrom-Json; foreach \\($i in @\\(7,9,11\\)\\) { Write-Output \"==== Cell $i \\($\\($nb.cells[$i].id\\)\\) ====\"; foreach \\($out in $nb.cells[$i].outputs\\) { if \\($out.output_type -eq 'stream'\\) { Write-Output \\($out.text -join ''\\) } } })",
+      "PowerShell($nb = Get-Content notebooks/05_explainability.ipynb -Raw | ConvertFrom-Json; foreach \\($i in 0..\\($nb.cells.Count-1\\)\\) { $c = $nb.cells[$i]; if \\($c.cell_type -ne 'code'\\) { continue }; $errs = @\\($c.outputs | Where-Object { $_.output_type -eq 'error' }\\).Count; $imgs = @\\($c.outputs | Where-Object { $_.data.'image/png' }\\).Count; $streams = @\\($c.outputs | Where-Object { $_.output_type -eq 'stream' }\\).Count; Write-Output \\(\"cell {0:D2} \\({1,-18}\\) errors={2} images={3} streams={4}\" -f $i, $c.id, $errs, $imgs, $streams\\) })",
+      "PowerShell($nb = Get-Content notebooks/05_explainability.ipynb -Raw | ConvertFrom-Json; Write-Output \"==== Cell 13 shap-run ====\" ; foreach \\($out in $nb.cells[13].outputs\\) { if \\($out.output_type -eq 'stream'\\) { $txt = if \\($out.text -is [array]\\) { $out.text -join '' } else { $out.text }; $lines = $txt -split \"`n\"; $tail = $lines[-8..-1] -join \"`n\"; Write-Output \"...[truncated head]...\"; Write-Output $tail } })",
+      "PowerShell($nb = Get-Content notebooks/05_explainability.ipynb -Raw | ConvertFrom-Json; $cell = $nb.cells[14]; $imgs = @\\($cell.outputs | Where-Object { $_.data.'image/png' }\\); Write-Output \"shap-display: $\\($imgs.Count\\) images\"; $tmpDir = \"$env:TEMP\\\\nb05-rerun\"; for \\($i = 1; $i -lt [Math]::Min\\(3, $imgs.Count\\); $i++\\) { $b64 = $imgs[$i].data.'image/png'; $bytes = [Convert]::FromBase64String\\($b64\\); $out = \"$tmpDir\\\\sample_$i.png\"; [IO.File]::WriteAllBytes\\($out, $bytes\\); Write-Output \"saved $out\" })"
     ]
   }
 }

@@ -1,7 +1,40 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** XAI **executed** — first-pass attention heatmaps + SHAP token bars produced. Two minor bugs found and fixed (attention titles used fresh model preds vs cached; SHAP aggregate was dominated by stop words). Per-sample SHAP yielded a strong Chapter-6.4 error-analysis finding: text_only model confuses sensational historical vocabulary (Kristallnacht example) with fake-news markers. Ready for a clean re-run + Chapter 6 drafting.
+**Current phase:** XAI infrastructure expanded — **LIME added alongside SHAP** (user override of blueprint §16's "drop LIME" decision). `explainability/lime_text.py` mirrors `shap_text.py` (same `pick_samples`, same seed) so SHAP and LIME run on the same 30 samples for direct comparison. Notebook 05 now has 3 XAI methods (attention/SHAP/LIME) + a side-by-side SHAP vs LIME Chapter-6.4 figure. Ready to run on Colab.
 **Last updated:** 2026-05-30
+
+---
+
+## Done
+
+### 2026-05-30 — LIME added alongside SHAP (overrides blueprint §16's drop-LIME decision)
+**`explainability/lime_text.py` — new (236 LOC).** Mirrors `shap_text.py` in structure for direct comparability:
+- Same `pick_samples` logic and same default `--seed=42` → guarantees LIME and SHAP run on the *same* 30 test samples. Manifests are joinable on `ds_idx`.
+- Same `build_predict_fn(model, tokenizer, device, max_len)` signature → same `text_only` predict_fn wired through both explainers.
+- `LimeTextExplainer(class_names=["real","fake"], bow=False, random_state=42)` — `bow=False` preserves word order (matters on 10-token titles).
+- `num_perturbations=1000` per sample → ~1–2 s/explanation × 30 ≈ 30–60 s on T4.
+- Outputs: 30 per-sample bars (`lime_NN_*.png`), `lime_word_records.csv`, `lime_manifest.json` (includes the `word_weights` list per sample so downstream comparisons don't need re-running LIME).
+- Per-sample plots use whole words on the y-axis (vs SHAP's BPE subwords) — much more readable; complementary granularity.
+
+**`notebooks/05_explainability.ipynb` — three new cells (positions 15–17, between SHAP display and take-aways):**
+- **Cell 15 (md):** LIME framing — perturbation-based vs SHAP's also-perturbation-based; explicit acknowledgement that the blueprint dropped LIME for methodological redundancy and a defence for including both anyway ("agreement between two independent perturbation procedures" as a stronger qualitative claim).
+- **Cell 16 (code):** `!python -m explainability.lime_text --checkpoint "{TEXT_ONLY_CKPT}" --n-samples 30` (~30–60 s on T4).
+- **Cell 17 (code):** Displays 6 confident-error LIME plots + a **SHAP vs LIME side-by-side block** for the top 3 confident errors. Loads both manifests, joins on `ds_idx`, renders sample text + SHAP bar + LIME bar in sequence. This is the headline Chapter-6.4 methodology figure.
+
+**`requirements.txt` updated:** added `lime>=0.2.0.1`.
+
+**Methodological framing for Chapter 6.4 / viva (revised from earlier):**
+> "We use three complementary explainability methods: (1) cross-attention heatmaps (intrinsic, image-side, unique to hemt_clip's architecture); (2) SHAP via Owen-partition explainer (post-hoc, text-side, BPE-token granularity); (3) LIME via local linear surrogate (post-hoc, text-side, whole-word granularity). SHAP and LIME are both perturbation-based and could be redundant — we include both deliberately so token attribution can be argued by agreement between two independent procedures rather than relying on either alone."
+
+**Caveats to flag in Chapter 6.4 honestly:**
+- SHAP and LIME share the same theoretical floor (both perturbation-based) — agreement is necessary but not sufficient evidence of true attribution. Gradient-based attribution (e.g. Integrated Gradients) would be a genuinely independent perspective; out of scope here.
+- LIME's `num_perturbations=1000` introduces sampling variance — same sample re-run may give slightly different weights. SHAP's Owen-partition is more deterministic in this regard.
+
+**Next:** user runs notebook 05 on Colab (~50 s of new work — bootstrap/attention/SHAP cached, just LIME + side-by-side display to add). When figures land, review LIME outputs and the side-by-side comparison; populate take-aways with concrete findings; then notebook 06 (Streamlit demo) + Chapter 6 draft.
+
+---
+
+### 2026-05-30 — XAI **executed**: heatmaps work, SHAP aggregate fixed, error-analysis finding surfaced
 
 ---
 
