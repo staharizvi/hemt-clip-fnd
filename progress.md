@@ -1,11 +1,91 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** Test-set evaluation **implemented** — `training/evaluate.py` (~280 LOC) + `notebooks/04_evaluation.ipynb` (14 cells) wired up. Pending Colab run on the 2,573-sample test split (~3–4 min on T4). When numbers come back, Chapter 6's primary results table + 7 figures are produced in one shot.
+**Current phase:** XAI infrastructure **implemented** — `explainability/attention_viz.py` (285 LOC), `explainability/shap_text.py` (313 LOC), and `notebooks/05_explainability.ipynb` (14 cells) wired up and ready to run. With the test verdict pivoting Chapter 6's headline from F1 to *intrinsic explainability*, these artefacts carry the report's primary qualitative figures.
 **Last updated:** 2026-05-30
 
 ---
 
 ## Done
+
+### 2026-05-30 — Explainability infrastructure (`attention_viz.py` + `shap_text.py` + notebook 05)
+**`explainability/attention_viz.py` — new (was a 13-line stub).** Cross-attention heatmaps per Blueprint §10.1.
+- Loads `hemt_clip` ckpt + `outputs/eval/preds_hemt_clip.npz` from notebook 04.
+- Sample picking: 4 buckets × `--n-per-bucket` (default 3 = 12 total) = `{correct, wrong}` × `{hi-conf, lo-conf}`. Deterministic, seed=42.
+- For each picked example: forward pass with `torch.autocast` fp16, capture per-head attention from `CrossAttentionFusion` (B=1, H=8, Q=1, P=196), average over heads, reshape to 14×14, bilinear-upsample to 224×224, overlay on original HDF5 image with `cmap='hot' alpha=0.5`. Plot is a 1×2 figure (original + overlay) with title showing pred / conf / true / status / α / text snippet.
+- Composite grid figure (`attention_grid.png`) shows all 12 in a 4×3 grid with compact per-cell titles — single-figure for Chapter 6.4.
+- Side artefacts: `attention_manifest.json` with `{bucket, ds_idx, hdf5_row, pred, label, confidence, alpha, file, text}` per pick — reproducible reference for the report's appendix.
+
+**`explainability/shap_text.py` — new (was a 12-line stub).** Post-hoc text attribution per Blueprint §10.2.
+- Loads `text_only` ckpt + `outputs/eval/preds_text_only.npz`. Uses **text_only** (not hemt_clip's text branch) deliberately: SHAP attributes a model's predictions, so the cleanest answer to "which words pushed the verdict?" comes from a model whose verdict is exactly a function of text alone.
+- Builds a `predict_fn(texts)` that tokenizes + runs forward pass with zero-filled dummies for `pixel_values/alpha/label` (text_only's forward ignores them but the signature requires them).
+- `shap.Explainer(predict_fn, shap.maskers.Text(tokenizer), output_names=["real","fake"])` — Owen-value partition explainer (faster than KernelExplainer, equivalent semantics for hierarchical text).
+- Sample picking: stratified across `{correct, wrong}` × `{real, fake}` × 3 confidence quantiles (low/mid/high) per cell, tops up randomly to hit `--n-samples` (default 30 per Blueprint §10.5).
+- Per-sample artefact: horizontal bar of token contributions to the predicted class (top 20 by |value|), positive bars red (→ fake), negative bars blue (→ real).
+- Aggregate artefact (`shap_top_tokens.png`): two side-by-side panels showing the top-15 tokens by mean SHAP value toward each class (across all 30 samples, with `count ≥ 2` filter for stability).
+- `shap_token_records.csv` long-form table + `shap_manifest.json` per-sample record. SHAP failures on individual samples log a warning and continue (rather than killing the whole run).
+
+**`notebooks/05_explainability.ipynb` — new (was a 1-cell stub).** 14 cells (7 markdown + 7 code).
+- Bootstrap cell verbatim from nb 02–04 (idempotent — Drive mount, repo pull, HDF5 → local SSD).
+- Discovery cell — reuses `training.evaluate.discover_checkpoints` to pick the same canonical ckpts as nb 04 (hemt_clip v4 seed=42, text_only latest). Also asserts `outputs/eval/preds_{hemt_clip,text_only}.npz` exist (produced by nb 04).
+- Attention section: framing markdown → `!python -m explainability.attention_viz ...` (~30s on T4) → display the composite grid + each of the 12 per-example panels via `IPython.display.Image`.
+- SHAP section: framing markdown → `!python -m explainability.shap_text ...` (~5–10 min on T4) → display the aggregate top-tokens figure + curated subset (top 6 confident errors + top 4 confident successes) from the manifest.
+- Take-aways markdown is templated: structure for what to claim under each method, plus a joint framing for Chapter 6.4 ("intrinsic on image, post-hoc on text — unified two-method framework"). Concrete observations get plugged in after the run.
+
+**Why this matters now:** the test-set verdict from earlier today (concat F1 0.832 > hemt_clip F1 0.828, AUC +1.23 pt for concat) inverted Chapter 6's planned F1 headline. The intrinsic-XAI argument — attention heatmaps over a 14×14 patch grid, *unique to the cross-attention architecture* — is the contribution Chapter 6 will now lead with. Without notebook 05's figures, the report has no qualitative defence for the architectural choice. With them, it has a stronger story than F1 alone.
+
+**Runtime budget on Colab:** ~30s (attention) + ~5–10 min (SHAP) + ~1 min (display + setup) = **~10–12 min total**. Cheap.
+
+**Next:** user runs notebook 05 on Colab. When figures land, I review the attention heatmaps and SHAP token bars, populate the take-aways markdown with concrete observations, and update progress.md with the qualitative findings (do heatmaps localize on relevant image regions? does SHAP produce sensible token rankings?). Then notebook 06 (Streamlit demo) and Chapter 6 draft.
+
+---
+
+### 2026-05-30 — Test-set evaluation **executed**: concat beats hemt_clip on test, narrative pivots to XAI
+**Full results (n=2,573 test split):**
+
+| Variant | val F1 | test F1 | val→test Δ | test acc | test prec | test rec | test AUC |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `text_only`     | 0.7702 | 0.7827 | +0.0125 | 0.7773 | 0.7522 | 0.8158 | 0.8545 |
+| `image_only`    | 0.8012 | 0.8135 | +0.0123 | 0.8061 | 0.7716 | 0.8601 | 0.8824 |
+| `concat_fusion` | 0.8204 | **0.8319** | +0.0115 | **0.8286** | **0.8034** | 0.8625 | **0.9042** |
+| `hemt_clip`     | 0.8229 | 0.8277 | **+0.0048** | 0.8189 | 0.7776 | **0.8846** | 0.8919 |
+
+**Key finding — concat_fusion beats hemt_clip on test:**
+- test F1: concat 0.8319 > hemt_clip 0.8277 (concat ahead **+0.42 pt**).
+- test accuracy: concat 0.8286 > hemt_clip 0.8189 (concat ahead **+0.97 pt**).
+- test AUC: concat 0.9042 > hemt_clip 0.8919 (concat ahead **+1.23 pt**, threshold-agnostic).
+
+Three different metrics agree — the val ordering did not generalize. The val→test delta tells the story: text_only/image_only/concat_fusion all gained ~+1.2 pt on test; hemt_clip gained only **+0.48 pt**. hemt_clip's val advantage was disproportionately val-specific, likely because the cross-attention block's extra ~3M trainable params over concat found val patterns that didn't transfer. `fusion.dropout=0.2` reduced but didn't eliminate this.
+
+**This invalidates the "cross-attention beats concat on F1" headline** we briefly defended after v4 single-seed (later weakened by seeds to +0.14 pt mean, now negative on test).
+
+**Findings that *do* hold robustly:**
+- **Multimodal premium is large and stable** — best unimodal (image_only 0.8135) → best fusion (concat 0.8319) = **+1.84 pt on test F1**, consistent with the val premium. The case for multimodal fusion (of any kind) is the strongest result in the matrix.
+- **Image > text on Fakeddit** — image_only test AUC 0.8824 vs text_only 0.8545. Thumbnails carry more signal than titles. Sentence-worth in Chapter 4 / 6.
+- **Recall/precision profiles differ by variant** — hemt_clip is recall-heavy (rec 0.8846 / prec 0.7776), concat is balanced (rec 0.8625 / prec 0.8034). Has deployment implications: hemt_clip for triage (high recall catches more fakes); concat for fact-checking (high precision avoids flagging real news). Both have legitimate use cases.
+
+**Chapter 6 narrative pivot — final framing:**
+> "Cross-attention shows competitive but not superior F1 versus concatenation (test 0.828 vs 0.832; difference within seed-level noise). Its contribution is **intrinsic explainability** — attention heatmaps over the 14×14 patch grid — a capability concatenation architecturally cannot provide. We trade ≈0.4 pt test F1 for a qualitative XAI mode the architecture enables, and gain a recall-skewed decision profile useful for triage applications."
+
+This is **stronger than overclaiming**. The intrinsic-XAI argument is genuinely unique to cross-attention; no honesty cost; examiner sees we understand our own numbers. Aligns with blueprint §16's defensible talking point #5 ("CLIP-guided cross-attention with α as a learned feature, combined with a unified two-method explainability framework").
+
+**Optional methodological strengthening (not blocking):** running `concat_fusion` at seeds 7 and 123 would give mean ± std for both fusion variants — symmetric comparison. Conclusion almost certainly won't flip (three test metrics all agree), but closes the rigour gap if the examiner asks. ~30 min Colab + ~6 min eval.
+
+**Artefacts now on disk (under `outputs/eval/` in repo):**
+- 4 confusion-matrix PNGs
+- 1 ROC overlay PNG
+- 1 ablation F1 bar PNG  
+- 1 per-class P/R PNG
+- 4 metrics JSON files
+- 4 predictions npz files (logits/probs/preds/labels — feeds notebook 05)
+- `summary_test.{csv,md}` — Chapter 6 results table
+
+**Definition of Done movement (blueprint §17):**
+- ✅ Test-set metrics for all 4 variants
+- ✅ 5+ plots (TB training curves + ROC + F1 bar + per-class P/R + 4 CMs = 8 figures)
+
+**Next:** notebook 05 — attention heatmaps (~10 examples chosen from `preds_hemt_clip.npz`, mix of correct/incorrect, high/low confidence) + SHAP on text branch (~30 samples). Both produce qualitative figures for Chapter 6, with attention heatmaps now carrying the headline. The XAI work is the centrepiece of the report, not a side dish.
+
+---
 
 ### 2026-05-30 — Test-set evaluation infrastructure (`training/evaluate.py` + notebook 04)
 **`training/evaluate.py` — new (was an 11-line stub).**
