@@ -1,11 +1,55 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** v4 (B/16 swap) **paused** — code committed (9812f31), but alpha not yet re-precomputed and ablation not re-run. Pivoting to fill in notebook deliverables (01–03) before resuming v4 on Colab.
+**Current phase:** **v4 (B/16) is a win.** hemt_clip val F1 = **0.8229**, ahead of concat_fusion (0.8204) by +0.25 pt — the "cross-attention beats concat" Chapter-6 headline is defensible. Proceeding to test-set evaluation (notebook 04).
 **Last updated:** 2026-05-30
 
 ---
 
 ## Done
+
+### 2026-05-30 — v4 results: hemt_clip pulls ahead with ViT-B/16
+**Ablation outcome (3 image-using variants re-run on B/16; text_only unchanged at 0.7702):**
+
+| Variant | v3 best F1 | v4 best F1 | Δ | Best @ |
+|---|---:|---:|---:|---|
+| `image_only`    | 0.7823 | 0.8012 | +1.89 pt | S2 ep4 |
+| `concat_fusion` | 0.8133 | 0.8204 | +0.71 pt | S2 ep5 |
+| `hemt_clip`     | 0.8012 | **0.8229** | **+2.17 pt** | S2 ep5 |
+
+**α re-precompute (CLIP ViT-B/16):** min=0.086, mean=0.276, max=0.490, std=0.054, NaN=0. Slight upward shift vs B/32 (mean 0.267 → 0.276) — consistent with B/16's tighter text-image alignment.
+
+**Headline finding — hemt_clip beats concat_fusion (+0.25 pt).** First time across v1–v4 that the cross-attention variant leads. The Chapter-6 talking point "cross-attention is justified over concatenation" is now defensible by raw F1, not just by XAI.
+
+**Mechanism — hemt_clip gained the *most* from the swap (+2.17 pt).** Cleanly explains the architecture's contribution: concat sees a pooled image vector (1 token), so spatial resolution barely helps it (+0.71 pt). hemt_clip's fusion attends over patch tokens as K/V — going 49 → 196 tokens gave it 4× finer localization. The architecture is *using* the new information, not just absorbing it. This is the cleanest possible defence in viva.
+
+**Trajectory shape — clean.** v2/v3 hemt_clip peaked at S2 ep3 then declined (overfit). v4 hemt_clip peaks at S2 ep5 (0.8229), ep6 only dips 0.003 — no early stop, no train-acc runaway, no decline. `fusion.dropout=0.2` from v3 + the bigger backbone settled into a clean operating point.
+
+**Wall-clock vs predicted:** 41.5 min for 3 variants + ~2 min α precompute = ~44 min total, well under the ~70 min estimate. α precompute was 8× faster than predicted (fp16 + batch=64 — the 25–30 min estimate was stale, predating those optimizations). Cells 18 + 20 in notebook 03 have full per-epoch logs.
+
+**Honest caveats for the report:**
+- +0.25 pt over concat is within typical seed-to-seed noise (±0.3–0.5 pt). Single-seed result. Worth running 2 additional hemt_clip seeds (7, 123) and reporting mean ± std for robustness — ~30 min on T4, optional.
+- All variants share the same `fusion.dropout=0.2` (from v3) and 6-epoch stage 2 (from v2). Apples-to-apples comparison.
+- B/16 means more compute per epoch (~75s for image_only vs B/32's ~62s, ~120s for hemt_clip vs ~90s). Still well within Colab Pro budget.
+
+**Notebook 03 cell 21 (`v4 results` placeholder) filled in with the above table + decision-tree outcome.**
+
+**Next (before test-set eval):** seed-robustness for `hemt_clip`. User chose to run 2 additional seeds (7 and 123) alongside the existing 42 to report **mean ± std** instead of a single point, since the +0.25 pt margin over concat_fusion is within typical seed noise.
+
+**Plumbing (`training/train.py`, 3 small edits):**
+- Added `--seed N` CLI flag. When set, overrides `cfg["seed"]` before `set_seed()` is called.
+- When `--seed` is given without explicit `--run-name`, the auto-generated run name appends `_seed{N}` so seed=7 and seed=123 checkpoints don't collide with the seed=42 run (which keeps its existing name).
+- No change to behaviour when `--seed` is not passed — backwards-compatible with all earlier ablation runs.
+
+**Notebook 03 — added seed-robustness section (cells 22–26):**
+- Cell 22 (md): rationale for the multi-seed run, what the seed actually controls in this pipeline (small randomly-init parts + shuffle order + dropout masks — backbones and α are deterministic).
+- Cell 23 (code): `!python -m training.train --variant hemt_clip --seed 7` (~15 min on T4).
+- Cell 24 (code): `!python -m training.train --variant hemt_clip --seed 123` (~15 min on T4).
+- Cell 25 (md, placeholder): 3-seed comparison table with mean ± std, plus a reading guide (`mean − std > 0.8204` → strongest defence; mean above concat but `− std` below → still defensible with nuance; mean below concat → pivot to XAI headline).
+- Cell 26 (md): existing "After training" wrap-up (unchanged).
+
+After-test plan: load all four variants' best.pt (text_only v2, image_only v4, concat_fusion v4, and the seed-aggregated hemt_clip — likely use seed=42 as the single best.pt for headline numbers, with seeds 7+123 reported as ± std in Chapter 6 text), run on n=2573 test split, emit per-variant test_{acc, f1, prec, rec} + confusion matrix PNG + ROC PNG + 4-row comparison table.
+
+---
 
 ### 2026-05-30 — Pivot: notebook implementation pass (01–03)
 Paused v4 (B/16) work to bring the notebook deliverables up to report quality. Notebooks 02 and 03 are implemented and have committed outputs; notebook 01 was a one-cell stub. Implementing 01 first, then a review/tidy pass on 02 and 03 — they need narrative cleanup (e.g. 03 has v1 markdown headers next to v2/v3 outputs) but no rewrite.

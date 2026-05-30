@@ -59,6 +59,9 @@ def parse_args() -> argparse.Namespace:
                    help="Path to checkpoint to resume from.")
     p.add_argument("--run-name", default=None,
                    help="Override auto-generated run name (default: {prefix}_{variant}_{YYYYMMDD-HHMM}).")
+    p.add_argument("--seed", type=int, default=None,
+                   help="Override cfg.seed for this run. When set, run_name auto-gets _seed{N} suffix "
+                        "(unless --run-name is also explicit). Used for multi-seed robustness reporting.")
     return p.parse_args()
 
 
@@ -259,6 +262,8 @@ def main() -> int:
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
 
+    if args.seed is not None:
+        cfg["seed"] = args.seed
     set_seed(cfg["seed"])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     batch_size = detect_batch_size(cfg)
@@ -298,6 +303,8 @@ def main() -> int:
 
     # --- Run name + output dirs
     run_name = args.run_name or make_run_name(cfg["logging"]["run_name_prefix"], args.variant)
+    if args.seed is not None and args.run_name is None:
+        run_name = f"{run_name}_seed{args.seed}"
     tb_dir   = Path(cfg["logging"]["tensorboard_dir"]) / run_name
     ckpt_dir = Path(cfg["checkpointing"]["dir"])
     tb_dir.mkdir(parents=True, exist_ok=True)
