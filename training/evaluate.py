@@ -98,7 +98,9 @@ def load_checkpoints_json(path: Path) -> dict[str, Path]:
 def load_model(variant: str, ckpt_path: Path, cfg: dict, device: torch.device) -> tuple[torch.nn.Module, float]:
     """Build model for `variant` from cfg, load weights from ckpt_path, return (model, val_f1_at_save)."""
     model = build_from_config(cfg, variant=variant).to(device)
-    payload = torch.load(ckpt_path, map_location=device)
+    # weights_only=False: matches train.py's save_checkpoint, which stores numpy RNG state
+    # alongside the model weights. These are our own trusted checkpoints from this repo.
+    payload = torch.load(ckpt_path, map_location=device, weights_only=False)
     state_dict = payload["model"] if isinstance(payload, dict) and "model" in payload else payload
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
     if missing:
