@@ -159,48 +159,50 @@ def plot_token_importance(values: np.ndarray, tokens: list[str], pred_label: int
     plt.close()
 
 
-# Common English stop words + Reddit/text-platform fillers. Excluded from aggregate
-# token rankings: they dominate by frequency alone, with small SHAP values that
-# average to nonzero noise — drowning out content tokens. Per-sample plots still
-# show them; only the cross-sample aggregate filters.
+# True stop words only — words that carry no domain signal regardless of context.
+# Conservatively trimmed: avoid filtering "way", "made", "looks", "two" etc. since
+# on Fakeddit's short titles they're often content (e.g. "two-headed snake" is
+# fake-leaning content). Per-sample plots are unfiltered; this set only applies
+# to the cross-sample aggregate, where common fillers accumulate spurious means.
 STOP_WORDS = {
-    "a", "an", "the", "and", "or", "but", "if", "so", "as", "than", "then",
-    "in", "on", "at", "to", "for", "of", "with", "by", "from", "into",
-    "out", "up", "down", "over", "under", "about", "after", "before",
+    "a", "an", "the", "and", "or", "but", "if", "so",
+    "in", "on", "at", "to", "for", "of", "with", "by", "from",
     "is", "are", "was", "were", "be", "been", "being", "am",
-    "have", "has", "had", "do", "does", "did", "doing",
-    "will", "would", "could", "should", "may", "might", "must", "can",
-    "this", "that", "these", "those", "such",
-    "i", "me", "my", "mine", "we", "us", "our", "ours",
-    "you", "your", "yours", "he", "him", "his", "she", "her", "hers",
-    "it", "its", "they", "them", "their", "theirs",
-    "what", "which", "who", "whom", "when", "where", "why", "how",
-    "all", "any", "both", "each", "few", "more", "most", "some", "no", "not",
-    "only", "own", "same", "very", "just", "also", "too", "still",
-    "one", "two", "three", "first", "second",
-    "like", "way", "made", "make", "get", "got", "see", "saw", "see", "look",
-    "looks", "thing", "things", "going", "go", "got",
+    "have", "has", "had", "do", "does", "did",
+    "this", "that", "these", "those",
+    "i", "me", "my", "we", "us", "our",
+    "you", "your", "he", "his", "she", "her",
+    "it", "its", "they", "them", "their",
+    "as", "than", "then", "such", "also", "too",
 }
 
 
 def plot_aggregate(token_df: pd.DataFrame, out_path: Path,
-                   min_count: int = 5, drop_stopwords: bool = True) -> None:
+                   min_count: int = 3, drop_stopwords: bool = True) -> bool:
     """Top tokens by mean SHAP value toward fake (right) and real (left).
 
-    `min_count` (default 5) and `drop_stopwords` together filter the noise that
-    dominated the first iteration's aggregate — common English fillers were
-    drowning out content tokens. Adjust if your sample size grows."""
-    agg = token_df.groupby("token").agg(
+    `min_count` and `drop_stopwords` together suppress noise from common English
+    fillers. For ~30 short titles, min_count=3 is the right floor — most content
+    tokens appear 2–4 times across the sample. Falls back to min_count=2 (no
+    stop-word filter) if the strict filter empties the pool, so the figure
+    always renders something rather than silently dropping the aggregate.
+
+    Returns True if the file was written, False otherwise."""
+    base = token_df.groupby("token").agg(
         mean_shap_fake=("shap_fake", "mean"),
         count=("token", "count"),
     ).reset_index()
-    agg = agg[agg["count"] >= min_count]
+    agg = base[base["count"] >= min_count]
     if drop_stopwords:
         agg = agg[~agg["token"].isin(STOP_WORDS)]
     if len(agg) == 0:
-        LOG.warning("aggregate: no tokens passed filters "
-                    "(min_count=%d, drop_stopwords=%s)", min_count, drop_stopwords)
-        return
+        LOG.warning("aggregate: no tokens passed min_count=%d + drop_stopwords=%s; "
+                    "falling back to min_count=2 (no stop-word filter).",
+                    min_count, drop_stopwords)
+        agg = base[base["count"] >= 2]
+    if len(agg) == 0:
+        LOG.warning("aggregate: still no tokens after fallback — skipping plot.")
+        return False
 
     top_fake = agg.nlargest(15, "mean_shap_fake")
     top_real = agg.nsmallest(15, "mean_shap_fake")
@@ -225,6 +227,7 @@ def plot_aggregate(token_df: pd.DataFrame, out_path: Path,
     plt.tight_layout()
     plt.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close()
+    return True
 
 
 def main() -> int:
@@ -328,8 +331,12 @@ def main() -> int:
     if token_records:
         df = pd.DataFrame(token_records)
         df.to_csv(args.out_dir / "shap_token_records.csv", index=False)
-        plot_aggregate(df, args.out_dir / "shap_top_tokens.png")
-        LOG.info("saved aggregate: shap_top_tokens.png")
+        wrote = plot_aggregate(df, args.out_dir / "shap_top_tokens.png")
+        if wrote:
+            LOG.info("saved aggregate: shap_top_tokens.png")
+        else:
+            LOG.warning("aggregate not written — see prior warnings; downstream "
+                        "notebook cell should guard for missing shap_top_tokens.png.")
     else:
         LOG.warning("no token records — SHAP failed for every sample.")
 
