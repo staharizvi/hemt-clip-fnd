@@ -1,11 +1,48 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** **XAI deliverable substantively complete.** All three methods (cross-attention heatmaps + SHAP + LIME) executed cleanly on Colab. Notebook 05 take-aways now written as near-final Chapter 6.4 draft. Key methodological finding: **SHAP and LIME disagree on sign of attribution for short titles** (sample 2115 "mad max"), agreeing strongly on long titles (sample 2221 Kristallnacht, sample 1007 tree-on-rock). The disagreement is not a bug — it reflects what each method theoretically measures (marginal contribution vs perturbation sensitivity) — and is itself a Chapter 6.4 figure. Ready for notebook 06 (Streamlit demo) + Chapter 6 prose draft.
+**Current phase:** **Streamlit demo implemented.** `app/streamlit_app.py` (~340 LOC) + `notebooks/06_demo.ipynb` (18 cells) wired up. Live cross-attention heatmap, pre-computed SHAP lookup, custom-image upload + test-sample dropdown, ngrok-tunneled deployment for viva. All blueprint §17 engineering deliverables now ticked. Ready for Chapter 6 + Chapter 7 prose draft and viva prep.
 **Last updated:** 2026-05-31
 
 ---
 
 ## Done
+
+### 2026-05-31 — Streamlit demo (`app/streamlit_app.py` + notebook 06)
+**`app/streamlit_app.py` — new (~340 LOC, was a 13-line stub).** Per Blueprint §11.
+- **Cached resources:** `load_model` (hemt_clip), `load_tokenizer` (RoBERTa), `load_clip` (ViT-B/16 for live α), `load_sample_examples` (6 test samples — 3 real + 3 fake — from HDF5, deterministic seed=0).
+- **Layout:** sidebar with checkpoint info + device, two-column main panel (input on left: sample dropdown + image upload + text area + Analyze button; image preview on right).
+- **Output on click:** prediction label (REAL / FAKE) with color coding, class-probability bars, α value with verbal interpretation (low / moderate / high), ground-truth comparison if a test sample was picked.
+- **Three tabs:**
+  - *Attention heatmap* — live extraction from `out["attention_weights"]` (B=1, H=8, Q=1, P=196) → mean heads → 14×14 grid → bilinear-upsample → overlay (`cmap='hot'`, alpha=0.5). Rendered as PNG via matplotlib `BytesIO`. < 1 s on T4.
+  - *SHAP (text)* — lookup precomputed `outputs/xai/shap/shap_NN_*.png` from notebook 05's manifest, keyed by `hdf5_row` (matches `selected_ds_idx`). Graceful degrade if no match or no manifest (shows informative message).
+  - *How it works* — architecture summary, test-set headline table (text_only 0.783 / image_only 0.814 / concat_fusion 0.832 / hemt_clip 0.828), explainability methods overview. Drops into a one-paragraph viva briefing.
+- **Checkpoint discovery:** `HEMT_CLIP_CKPT` env var takes precedence; else walks `HEMT_CLIP_CKPT_DIR` (defaults to Drive checkpoints dir) for latest non-`_seed*` hemt_clip best.pt.
+
+**`notebooks/06_demo.ipynb` — new (18 cells, was no stub).** Per Blueprint §11.3.
+- Cells 0–4: idempotent bootstrap (Drive + repo + deps + HDF5 to local SSD), point cfg at local HDF5 — identical pattern to nb 02–05.
+- Cells 5–6: **auto-recover SHAP artefacts** if missing in fresh Colab runtime. Runs `training.evaluate` (~3 min) + `explainability.shap_text` (~30 s) so the demo's SHAP tab is populated. Attention is live so no precompute needed.
+- Cells 7–8: discover canonical `hemt_clip` ckpt via `training.evaluate.discover_checkpoints`, set `HEMT_CLIP_CKPT` env var for the streamlit subprocess to inherit.
+- Cells 9–10: ngrok auth setup — reads `NGROK_AUTHTOKEN` env var first, falls back to `getpass.getpass()` so the token doesn't print to the notebook output. Tears down stale tunnels before reauthenticating.
+- Cells 11–12: launches `streamlit run app/streamlit_app.py` as a `subprocess.Popen` with stdout to `/content/streamlit.log`, polls `curl http://127.0.0.1:8501/` up to 20 s for readiness, then opens HTTPS ngrok tunnel pointing at port 8501. Prints the public URL with horizontal-rule formatting for easy copy.
+- Cells 13–14: optional `!tail -n 40 /content/streamlit.log` for debugging.
+- Cells 15–16: shutdown cell — disconnects tunnels, kills ngrok, `pkill streamlit run`.
+- Cell 17: viva talking points specific to the demo — what to highlight live, what to do if Colab disconnects mid-viva (recorded video backup + report figures + report prose), three anticipated examiner questions with crisp answers.
+
+**Definition of Done movement (Blueprint §17):**
+- ✅ Streamlit demo runs end-to-end with example inputs (test-sample dropdown gives 6 canned examples; custom upload also supported)
+- ✅ Code pushed to GitHub with README and requirements.txt (already done; `requirements.txt` already had `streamlit==1.32.0` + `pyngrok>=7.0.0`, no new deps needed)
+- ✅ All engineering deliverables now ticked
+
+**Engineering scope is now complete.** Remaining items are pure writing/prep:
+- Chapter 6 prose draft (using nb 04 + 05 outputs as figure/table inputs)
+- Chapter 7 (Conclusion & Future Work)
+- Existing-report fixes per Blueprint §15 (duplicate acknowledgments, scope inconsistency, etc.)
+- Slide deck (12–15 slides)
+- Two demo dry-runs before viva
+
+**Next:** user owns the prose. I can draft outlines or specific sections on request, but Chapter 6 is best written in the user's own voice with the figures/numbers I've already produced as the scaffolding.
+
+---
 
 ### 2026-05-31 — Chapter 6.4 take-aways written as near-final draft
 **Notebook 05 cell `takeaways-md` rewritten from a "fill in after the run" template to a structured §6.4 draft** that drops into the report with light prose polish. Four findings, each backed by saved figures:
