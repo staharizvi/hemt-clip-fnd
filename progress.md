@@ -1,11 +1,51 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** XAI infrastructure expanded — **LIME added alongside SHAP** (user override of blueprint §16's "drop LIME" decision). `explainability/lime_text.py` mirrors `shap_text.py` (same `pick_samples`, same seed) so SHAP and LIME run on the same 30 samples for direct comparison. Notebook 05 now has 3 XAI methods (attention/SHAP/LIME) + a side-by-side SHAP vs LIME Chapter-6.4 figure. Ready to run on Colab.
-**Last updated:** 2026-05-30
+**Current phase:** **XAI deliverable substantively complete.** All three methods (cross-attention heatmaps + SHAP + LIME) executed cleanly on Colab. Notebook 05 take-aways now written as near-final Chapter 6.4 draft. Key methodological finding: **SHAP and LIME disagree on sign of attribution for short titles** (sample 2115 "mad max"), agreeing strongly on long titles (sample 2221 Kristallnacht, sample 1007 tree-on-rock). The disagreement is not a bug — it reflects what each method theoretically measures (marginal contribution vs perturbation sensitivity) — and is itself a Chapter 6.4 figure. Ready for notebook 06 (Streamlit demo) + Chapter 6 prose draft.
+**Last updated:** 2026-05-31
 
 ---
 
 ## Done
+
+### 2026-05-31 — Chapter 6.4 take-aways written as near-final draft
+**Notebook 05 cell `takeaways-md` rewritten from a "fill in after the run" template to a structured §6.4 draft** that drops into the report with light prose polish. Four findings, each backed by saved figures:
+
+**Finding 1 — Cross-attention produces structured heatmaps.** Focus quality varies with image content density; clean localisation on figures/faces in `correct_hi` examples, diffuse on text-heavy images (honest limit, not claimed as a flaw). Composite grid `attention_grid.png` is the single §6.4 figure for the intrinsic method.
+
+**Finding 2 — Sample 2221 (Kristallnacht) is the headline error-analysis figure.** SHAP and LIME *agree* on the failure mechanism: `property`, `attacks`, `german`/`erman`, `during` push fake → model is biased against violent/historical vocabulary in general, not against the named event. They *disagree* on `kristallnacht` and `colourized`: SHAP fragments both into BPE pieces (`acht`, `ouri`) that mislead; LIME catches the whole-word signal (`kristallnacht` modestly real-pushing, `colourized` real-pushing — Reddit cultural pattern). LIME's whole-word view reveals what SHAP's BPE fragmentation hid.
+
+**Finding 3 — Sample 1007 ("tree on rock") is the headline success figure.** Both methods independently flag the compositional structure (object + preposition + object on top of object) as fake-pushing. Strong agreement on success tokens makes the cross-method agreement argument credible (not just cherry-picked errors).
+
+**Finding 4 — Sample 2115 ("mad max") is the methodology figure: SHAP and LIME disagree on sign.** Same model, same correct prediction (real, conf=0.791), opposite attribution direction. SHAP says tokens push fake; LIME says tokens push real. **Not a bug** — SHAP measures marginal contribution against expected value, LIME measures perturbation sensitivity. On a 2-content-word title with low signal density, each method falls back to its respective theoretical default and they diverge. **Cross-method agreement is conditional, not universal** — holds for long signal-rich titles, can invert on short titles. This is *more* honest than a flawless-agreement story and validates including both methods.
+
+**Per-method observations** documented for the §6.4 discussion paragraph:
+- Cross-attention: zero-cost intrinsic, architecture-specific, focus varies with image structure
+- SHAP: BPE granularity faithful to model internals but harder to read; aggregate at n=30 not stable (dropped from report — only "like" survived strict filter)
+- LIME: whole-word granularity readable; ~10% sampling variance across runs, rank order stable
+
+**Honest caveats** flagged for §6.4:
+- Both post-hoc methods are perturbation-based; share a theoretical floor (deleted-word inputs are out-of-distribution). A gradient-based method would be genuinely independent — out of scope for FYP.
+- n=30 is robust per-sample but not population-level — no over-claiming aggregate trends.
+- SHAP+LIME run on `text_only` model, not `hemt_clip` text branch — deliberate methodological choice for clean attribution semantics.
+- Multimodal SHAP intentionally skipped per Blueprint §10.2.
+
+**§6.4 figure plan** (3 headline figures, ~1 page each in report):
+1. Cross-attention composite grid (intrinsic method showcase).
+2. Sample 2221 SHAP+LIME side-by-side (error analysis with cross-method agreement on mechanism).
+3. Sample 2115 SHAP+LIME side-by-side (methodology figure: when methods disagree, what each measures).
+
+**Viva talking points** (Blueprint §16, updated):
+- "Why include LIME?" → not redundant with SHAP; answers different attribution question at different granularity; agreement and disagreement both informative.
+- "What's novel?" → intrinsic explainability via cross-attention (unique to fusion architecture) + unified two-method post-hoc framework that *deliberately includes both LIME and SHAP* with structured agreement-vs-disagreement analysis.
+
+**Definition of Done movement (blueprint §17):**
+- ✅ 10+ attention visualizations (12 done)
+- ✅ 30+ SHAP text explanations (30 done; LIME also 30 done)
+- ✅ Chapter 6.4 qualitative-analysis subsection drafted (near-final, in notebook 05)
+
+**Next:** notebook 06 (Streamlit demo) + Chapter 6 prose draft. The XAI deliverable is substantively done — figures are saved, findings are concrete, framing is honest, report integration plan is clear.
+
+---
 
 ### 2026-05-30 — LIME added alongside SHAP (overrides blueprint §16's drop-LIME decision)
 **`explainability/lime_text.py` — new (236 LOC).** Mirrors `shap_text.py` in structure for direct comparability:
