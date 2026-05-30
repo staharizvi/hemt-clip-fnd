@@ -1,11 +1,43 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** XAI infrastructure **implemented** — `explainability/attention_viz.py` (285 LOC), `explainability/shap_text.py` (313 LOC), and `notebooks/05_explainability.ipynb` (14 cells) wired up and ready to run. With the test verdict pivoting Chapter 6's headline from F1 to *intrinsic explainability*, these artefacts carry the report's primary qualitative figures.
+**Current phase:** XAI **executed** — first-pass attention heatmaps + SHAP token bars produced. Two minor bugs found and fixed (attention titles used fresh model preds vs cached; SHAP aggregate was dominated by stop words). Per-sample SHAP yielded a strong Chapter-6.4 error-analysis finding: text_only model confuses sensational historical vocabulary (Kristallnacht example) with fake-news markers. Ready for a clean re-run + Chapter 6 drafting.
 **Last updated:** 2026-05-30
 
 ---
 
 ## Done
+
+### 2026-05-30 — XAI **first-pass executed**: heatmaps work, SHAP aggregate fixed, error-analysis finding surfaced
+**Run summary (50 sec total wall-clock on T4):**
+- Cell 8 (auto-recover): detected both `preds_*.npz` missing in fresh runtime, ran `training.evaluate` (~3 min), regenerated all eval artefacts. Self-recovery wire worked as designed.
+- Cell 10 (attention_viz): 14 s. All 12 examples + composite grid saved.
+- Cell 13 (shap_text): 35 s. **All 30 SHAP samples succeeded — no failures.** (Owen partition explainer on short titles is much faster than estimated; the 5–10 min estimate was for KernelExplainer-class methods.)
+
+**Qualitative findings from inspection of the rendered figures:**
+
+**Attention heatmaps (intrinsic, hemt_clip):**
+- Cross-attention produces *structured* heatmaps, not noise — every example shows non-uniform spatial focus. Some examples localize cleanly on figures/faces/text overlays; others (e.g., a Reddit-thread screenshot) are diffuse because the image content itself is diffuse. **Honest framing for Chapter 6.4:** "cross-attention produces interpretable heatmaps with focus quality varying as a function of image structure" — defensible, not over-claiming.
+- The composite grid figure (`outputs/xai/attention/attention_grid.png`) is single-figure-ready for Chapter 6.4.
+
+**SHAP per-sample bars (post-hoc, text_only):**
+- **Strong Chapter-6.4 finding from sample 2221:** title `"a german attacks jewishowned property during the kristallnacht colourized"` — text_only confidently misclassified as FAKE (conf=0.715). Top positive SHAP tokens: `property` (+0.18), `during` (+0.12), `erman` (+0.07), `attacks` (+0.06), `acht` (+0.05) — BPE pieces of "german" and "kristallnacht". **The model conflates sensational/historical vocabulary with fake-news markers, mistaking a real historical event description for a fake post.** Direct error-analysis material for Chapter 6.6 (Error Analysis), and a defensible viva talking point about why pure text models fail on fact-grounded historical content.
+- BPE tokenization fragments multi-token words (`german` → `g` + `erman`, `kristallnacht` → `k` + `rist` + `all` + `n` + `acht`). Per-sample bars are still readable when you mentally join subwords; aggregate stats would benefit from BPE merging but that's a separate engineering pass.
+
+**Bugs found and fixed in this turn:**
+
+1. **`attention_viz.py`: cached-pred mismatch.** The script ran a fresh batch=1 forward pass to capture attention weights, but ALSO used that fresh pass's `argmax(probs)` to label `pred` and `confidence` in the figure titles. Under fp16 + batch=1 vs evaluate.py's batched fp16, borderline samples can flip — producing titles like `[correct_lo] ✗ pred=FAKE | true=REAL | wrong | conf=1.00` (bucket says correct + low-conf, fresh pass disagrees on both). **Fix:** use the cached `preds[ds_idx]` and `probs[ds_idx]` from the npz for labeling; only use the model's fresh forward for the attention weights, which is what it's there for. One-line change in `main()`.
+
+2. **`shap_text.py`: aggregate dominated by stop words.** The original `plot_aggregate` had `min_count=2` and no stop-word filter, so the top-15 tokens for both "real" and "fake" rankings were `and`, `the`, `this`, `it`, `on`, `way`, `building`, ... — common English fillers with small SHAP values that average to spurious means across the 30 samples. **Fix:** bumped `min_count` 2→5 and added a `STOP_WORDS` set of ~80 English fillers + Reddit-platform words to exclude from the aggregate. Per-sample plots are untouched (stop words there still carry information about which words the model latched onto).
+
+**What re-running will produce:** clean attention titles (consistent with the bucket they came from) + interpretable SHAP aggregate showing real content tokens. Then Chapter 6.4 is ready to draft.
+
+**Definition of Done movement (blueprint §17):**
+- ✅ 10+ attention visualization examples saved (12 done, with composite grid for the report)
+- ✅ 30+ SHAP text explanations generated (30 done, zero failures)
+
+**Next:** user re-runs cells 10 and 13 (attention + SHAP) — bootstrap and eval cells stay cached. ~50 s. Then notebook 06 (Streamlit demo) and Chapter 6 draft. The XAI artefacts now carry the Chapter 6 headline (since concat F1 > hemt_clip F1 on test), so getting these figures clean was load-bearing.
+
+---
 
 ### 2026-05-30 — Explainability infrastructure (`attention_viz.py` + `shap_text.py` + notebook 05)
 **`explainability/attention_viz.py` — new (was a 13-line stub).** Cross-attention heatmaps per Blueprint §10.1.

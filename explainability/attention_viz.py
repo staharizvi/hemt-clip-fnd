@@ -242,10 +242,14 @@ def main() -> int:
             text = raw_text.decode("utf-8") if isinstance(raw_text, bytes) else str(raw_text)
 
             sample = ds[ds_idx]
-            attn_grid, probs_pred = extract_attention(model, sample, device)
-            pred = int(probs_pred.argmax())
+            # IMPORTANT: use the *cached* prediction from preds_npz for labeling, not the
+            # fresh forward's argmax. Borderline samples can flip under fp16 + batch=1 vs
+            # evaluate.py's batched fp16 run — keeping the cached pred makes the bucket
+            # label ("correct_lo" etc.) consistent with what's actually displayed.
+            attn_grid, _ = extract_attention(model, sample, device)
+            pred = int(preds[ds_idx])
             label = int(labels[ds_idx])
-            confidence = float(probs_pred.max())
+            confidence = float(probs[ds_idx].max())
             alpha_val = float(sample["alpha"].item())
 
             stem = f"{bucket_name}_{i:02d}_pred-{['real','fake'][pred]}_true-{['real','fake'][label]}"

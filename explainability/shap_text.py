@@ -159,15 +159,47 @@ def plot_token_importance(values: np.ndarray, tokens: list[str], pred_label: int
     plt.close()
 
 
-def plot_aggregate(token_df: pd.DataFrame, out_path: Path, min_count: int = 2) -> None:
-    """Top tokens by mean SHAP value toward fake (right) and real (left)."""
+# Common English stop words + Reddit/text-platform fillers. Excluded from aggregate
+# token rankings: they dominate by frequency alone, with small SHAP values that
+# average to nonzero noise — drowning out content tokens. Per-sample plots still
+# show them; only the cross-sample aggregate filters.
+STOP_WORDS = {
+    "a", "an", "the", "and", "or", "but", "if", "so", "as", "than", "then",
+    "in", "on", "at", "to", "for", "of", "with", "by", "from", "into",
+    "out", "up", "down", "over", "under", "about", "after", "before",
+    "is", "are", "was", "were", "be", "been", "being", "am",
+    "have", "has", "had", "do", "does", "did", "doing",
+    "will", "would", "could", "should", "may", "might", "must", "can",
+    "this", "that", "these", "those", "such",
+    "i", "me", "my", "mine", "we", "us", "our", "ours",
+    "you", "your", "yours", "he", "him", "his", "she", "her", "hers",
+    "it", "its", "they", "them", "their", "theirs",
+    "what", "which", "who", "whom", "when", "where", "why", "how",
+    "all", "any", "both", "each", "few", "more", "most", "some", "no", "not",
+    "only", "own", "same", "very", "just", "also", "too", "still",
+    "one", "two", "three", "first", "second",
+    "like", "way", "made", "make", "get", "got", "see", "saw", "see", "look",
+    "looks", "thing", "things", "going", "go", "got",
+}
+
+
+def plot_aggregate(token_df: pd.DataFrame, out_path: Path,
+                   min_count: int = 5, drop_stopwords: bool = True) -> None:
+    """Top tokens by mean SHAP value toward fake (right) and real (left).
+
+    `min_count` (default 5) and `drop_stopwords` together filter the noise that
+    dominated the first iteration's aggregate — common English fillers were
+    drowning out content tokens. Adjust if your sample size grows."""
     agg = token_df.groupby("token").agg(
         mean_shap_fake=("shap_fake", "mean"),
         count=("token", "count"),
     ).reset_index()
     agg = agg[agg["count"] >= min_count]
+    if drop_stopwords:
+        agg = agg[~agg["token"].isin(STOP_WORDS)]
     if len(agg) == 0:
-        LOG.warning("aggregate: no tokens passed min_count=%d filter", min_count)
+        LOG.warning("aggregate: no tokens passed filters "
+                    "(min_count=%d, drop_stopwords=%s)", min_count, drop_stopwords)
         return
 
     top_fake = agg.nlargest(15, "mean_shap_fake")
