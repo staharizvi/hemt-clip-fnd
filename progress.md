@@ -36,7 +36,15 @@ Paused v4 (B/16) work to bring the notebook deliverables up to report quality. N
 - `alpha-code`: added an explicit Δ-mean print so the fake>real direction surfaces in the cell output, not just in the take-aways markdown.
 - Pending: re-run cells 9 (`titles-code`) and 11 (`alpha-code`) on Colab to refresh their outputs against the new source. Both are CPU-only and complete in seconds.
 
-**Next:** after the 2-cell re-run, review pass on notebook 02 for narrative consistency, then notebook 03, then resume v4 (B/16) on Colab.
+**Pivot back to v4 (2026-05-30, same day):** user chose Fork A (F1-first) — resume v4 immediately. Notebook 02 polish deferred until v4 numbers are back. v4 cells now wired into `notebooks/03_full_training.ipynb` as a discrete `## Re-run — bigger backbone (v4, 2026-05-30)` section (cells 17–21), so the Colab run is paste-free:
+
+- Cell 17 (md): v4 framing — why B/16, what changed, expected outcome, decision tree.
+- Cell 18 (code, ~25–30 min): `data.precompute_alpha --model openai/clip-vit-base-patch16 --overwrite` against the Drive HDF5. Inline sanity-check guidance (NaN=0 hard requirement, mean roughly [0.20, 0.35]).
+- Cell 19 (code, ~1 min): `shutil.copy` Drive → local SSD so the trainer reads the fresh α.
+- Cell 20 (code, ~45 min): `training.ablation_runner --variants image_only concat_fusion hemt_clip --force`.
+- Cell 21 (md, placeholder): v4 results table + decision tree, to be filled after the runner finishes.
+
+Existing v1–v3 cells (0–16) untouched — they remain as the experiment history, with their outputs as the on-the-record trajectory.
 
 ---
 
