@@ -1,11 +1,47 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** Seed-robustness done. **hemt_clip val F1 = 0.8218 ± 0.0017 (n=3 seeds)**, vs concat_fusion 0.8204 (single seed). Δ = +0.14 pt — real but small, within single-seed noise. Chapter 6 headline carried by intrinsic XAI; F1 is supporting evidence, not the lead. Ready for test-set evaluation.
+**Current phase:** Test-set evaluation **implemented** — `training/evaluate.py` (~280 LOC) + `notebooks/04_evaluation.ipynb` (14 cells) wired up. Pending Colab run on the 2,573-sample test split (~3–4 min on T4). When numbers come back, Chapter 6's primary results table + 7 figures are produced in one shot.
 **Last updated:** 2026-05-30
 
 ---
 
 ## Done
+
+### 2026-05-30 — Test-set evaluation infrastructure (`training/evaluate.py` + notebook 04)
+**`training/evaluate.py` — new (was an 11-line stub).**
+- Auto-discovers `hemt_{variant}_*_best.pt` per variant from `cfg.checkpointing.dir`, preferring non-`_seed*` files (so `hemt_clip` picks the canonical v4 seed=42 ckpt, not seed=7/123). Override with `--checkpoints <json>`.
+- Picks: `text_only` → v2 B/32 ckpt (latest text_only run; text branch is backbone-agnostic), `image_only`/`concat_fusion` → v4 B/16 (latest), `hemt_clip` → v4 seed=42 B/16 (latest non-seed).
+- Per variant: build from cfg, load weights (`payload["model"]`), fp16 inference under `torch.no_grad()`, collect logits + labels, compute Blueprint §9.1 metrics (accuracy, F1 binary + macro, precision, recall, AUC-ROC, confusion matrix, per-class report). Releases GPU memory between variants (`del model` + `torch.cuda.empty_cache()`).
+- Cross-variant outputs:
+  - `summary_test.{csv,md}` — 4-row Chapter 6 results table (val F1 from ckpt + 5 test metrics + ckpt name).
+  - `roc_overlay_test.png` — all 4 ROC curves on one axes with AUC labels.
+  - `f1_bar_test.png` — ablation F1 bar with value labels.
+  - `per_class_pr_test.png` — real/fake precision/recall grouped bars.
+- Per-variant outputs:
+  - `cm_{variant}.png` × 4 — confusion matrices with counts.
+  - `metrics_{variant}.json` × 4 — full metric dump for the report.
+  - `preds_{variant}.npz` × 4 — logits/probs/preds/labels, feeds notebook 05's XAI.
+- CLI: `--config`, `--ckpt-dir`, `--checkpoints`, `--split` (default `test`), `--out-dir` (default `outputs/eval`), `--batch-size` (default 32), `--num-workers` (2), `--device`. Reusable on val split (`--split val`) for threshold calibration follow-ups.
+
+**`notebooks/04_evaluation.ipynb` — new (was a 1-cell stub).**
+- 14 cells (7 markdown + 7 code). Target audience: examiner reading Chapter 6.
+- Bootstrap cell verbatim from nb 02/03 (idempotent — mounts Drive on Account B, pulls repo, copies HDF5 to local SSD).
+- "Point evaluator at the local HDF5" cell — same yaml patch pattern as nb 03 (so cfg points at `/content/fakeddit.h5`, faster sequential reads than Drive FUSE).
+- Discovery cell — calls `discover_checkpoints` and prints which `*_best.pt` was picked per variant + file size. Sanity check before evaluation.
+- Run cell — single `!python -m training.evaluate --split test` invocation (~3–4 min).
+- Results table cell — reads `summary_test.csv`, prints the table, computes val→test delta per variant (small delta = healthy generalization).
+- Figures cell — renders the 7 PNGs inline via `IPython.display.Image` for the committed notebook to show them without re-running.
+- Take-aways markdown (template): expected F1 ordering, val→test delta interpretation, AUC vs F1 comparison, per-class P/R interpretation, dominant error mode analysis — examiner-ready bullets pre-structured so they can be populated with concrete numbers after the run.
+
+**No new requirements** — all deps (pandas, scikit-learn, matplotlib, pyyaml, h5py) already in `requirements.txt`.
+
+**Definition of Done movement (blueprint §17):**
+- ✓ Test-set metrics computed for all 4 variants ← *will tick after Colab run*
+- ✓ 5+ plots generated (training curves from TB + ROC + F1 bar + per-class PR + 4 confusion matrices = 8 figures) ← *same*
+
+**Next:** user runs notebook 04 on Colab. When the numbers come back, I fill in the take-aways markdown with concrete observations, update progress.md with the verdict, then we move to notebook 05 (XAI: attention heatmaps + SHAP).
+
+---
 
 ### 2026-05-30 — Seed-robustness for hemt_clip (seeds 7, 123 added to seed=42)
 **Results:**
