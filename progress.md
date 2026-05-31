@@ -1,11 +1,32 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** **Novelty repositioned + `gated_fusion` ablation added (code).** Report novelty reframed from "novel cross-attention architecture" (weak: never built as described, loses to concat on F1) to three defensible contributions led by the **α-as-learned-feature vs α-as-gate** empirical result. Added a `gated_fusion` model variant to test it head-to-head. **Pending:** user trains `gated_fusion` on Colab (~6 min) + re-runs eval to fill Table 6.1 / §6.3.3.
-**Last updated:** 2026-05-31
+**Current phase:** **α-gate wins → `gated_fusion` is now the headline HEMT-CLIP; source doc fully reframed.** Test (n=2573): full HEMT-CLIP (α-gate) F1 **0.8393** / Acc **0.8313** / AUC **0.9122** — best of all variants (concat 0.8319/0.9042; α-feature ablation 0.8277/0.8919). User decided (2026-06-01): `gated_fusion` = headline HEMT-CLIP, α-feature variant demoted to ablation; single seed is fine (no seeds 7/123). `report/Chapters_4_5_6_Source.md` rewritten throughout: headline-result box, master-correction item 3 reversed, §4.2.1/§4.3.1 novelty (lead with gated architecture), Table 4.3, §5.1.1/5.1.5/5.1.7 (α-gate is the model, classifier 512), Chapter 6 (Table 6.1 5 rows, §6.3.1/§6.3.3 gate-wins, §6.7). Notebooks 03/04 cells updated with the result. **Next:** user integrates the reframed prose into the docx; Ch.7; slides; demo (point demo at the gated_fusion ckpt as HEMT-CLIP).
+**Last updated:** 2026-06-01
 
 ---
 
 ## Done
+
+### 2026-06-01 — `gated_fusion` result: α-gate wins on test (novelty inverts back to original architecture)
+Trained `gated_fusion` (val F1 0.8464, reproduced twice) and evaluated all 5 variants on test (notebook 04, `hemt_gated_fusion_20260531-2116`):
+
+| Variant | test F1 | test Acc | test AUC | test Rec | test Prec |
+|---|---:|---:|---:|---:|---:|
+| concat_fusion | 0.8319 | 0.8286 | 0.9042 | 0.8625 | **0.8034** |
+| hemt_clip (α-feature) | 0.8277 | 0.8189 | 0.8919 | 0.8846 | 0.7776 |
+| **gated_fusion (α-gate)** | **0.8393** | **0.8313** | **0.9122** | **0.8957** | 0.7895 |
+
+**gated_fusion is the single best model** on F1/Acc/AUC/Rec. Beats α-feature by +1.16 F1 / +2.03 AUC; beats concat by +0.74 F1 / +0.80 AUC.
+
+**This REVERSES the prior conclusion and CORRECTION 3.** The α-gated weighted fusion that the original report describes (and that I'd flagged as "never implemented / weak novelty") is now implemented *and* is the best detector. The project's originally-claimed novelty — CLIP-guided cross-attention with α as a similarity gate — is vindicated empirically. The α-direction finding (fake>real α) still holds as an observation, but the interpretation "⇒ gating is wrong" was falsified: the gate works as a learned soft-blend despite inverted α.
+
+Caveats: gated val→test −0.7 pt (val optimistic, like hemt_clip, but stays #1 on test); single seed; concat retains best precision. Notebook 04 §6.3.3 cell updated with the result.
+
+**Next:** (1) user decides whether gated_fusion becomes the headline "HEMT-CLIP"; (2) reframe source doc §4.3.1/Table 6.1/§6.3.3 + reverse CORRECTION 3; (3) optionally run gated seeds 7/123 for mean±std since it's now the headline.
+
+> **NOTE (superseded):** the entry below framed the novelty as "α-as-feature beats gating." The 2026-06-01 test result above **reverses that** — the α-gate wins. Kept for history.
+
+---
 
 ### 2026-05-31 — Novelty reframe + `gated_fusion` variant (code change)
 **Decision (user-chosen):** novelty framing = **α-finding + XAI** (not "novel architecture"); and **yes, build the gated variant** to make the α design choice an empirical result.
