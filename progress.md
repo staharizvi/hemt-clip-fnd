@@ -1,7 +1,18 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** **α-gate wins → `gated_fusion` is now the headline HEMT-CLIP; source doc fully reframed.** Test (n=2573): full HEMT-CLIP (α-gate) F1 **0.8393** / Acc **0.8313** / AUC **0.9122** — best of all variants (concat 0.8319/0.9042; α-feature ablation 0.8277/0.8919). User decided (2026-06-01): `gated_fusion` = headline HEMT-CLIP, α-feature variant demoted to ablation; single seed is fine (no seeds 7/123). `report/Chapters_4_5_6_Source.md` rewritten throughout: headline-result box, master-correction item 3 reversed, §4.2.1/§4.3.1 novelty (lead with gated architecture), Table 4.3, §5.1.1/5.1.5/5.1.7 (α-gate is the model, classifier 512), Chapter 6 (Table 6.1 5 rows, §6.3.1/§6.3.3 gate-wins, §6.7). Notebooks 03/04 cells updated with the result. **Next:** user integrates the reframed prose into the docx; Ch.7; slides; demo (point demo at the gated_fusion ckpt as HEMT-CLIP).
+**Current phase:** **α-gate wins → `gated_fusion` is now the headline HEMT-CLIP; source doc fully reframed.** Test (n=2573): full HEMT-CLIP (α-gate) F1 **0.8393** / Acc **0.8313** / AUC **0.9122** — best of all variants (concat 0.8319/0.9042; α-feature ablation 0.8277/0.8919). User decided (2026-06-01): `gated_fusion` = headline HEMT-CLIP, α-feature variant demoted to ablation; single seed is fine (no seeds 7/123). `report/Chapters_4_5_6_Source.md` rewritten throughout: headline-result box, master-correction item 3 reversed, §4.2.1/§4.3.1 novelty (lead with gated architecture), Table 4.3, §5.1.1/5.1.5/5.1.7 (α-gate is the model, classifier 512), Chapter 6 (Table 6.1 5 rows, §6.3.1/§6.3.3 gate-wins, §6.7). Notebooks 03/04 cells updated with the result. **Next:** user integrates the reframed prose into the docx; Ch.7; slides; re-run notebooks 05/06 on Colab (now wired to gated_fusion) to regenerate attention figures + demo.
 **Last updated:** 2026-06-01
+
+---
+
+### 2026-06-01 — Notebooks 05/06 + XAI/demo code reframed to gated_fusion (headline HEMT-CLIP)
+Made the explainability + demo serve the α-gated headline model:
+- **`explainability/attention_viz.py`** — added `--variant` flag (default `gated_fusion`); `load_model(variant=...)`; default `--preds-npz` → `preds_gated_fusion.npz`. Heatmaps are now the headline model's genuine cross-attention weights (gate is applied after attention).
+- **`app/streamlit_app.py`** — new `HEMT_CLIP_VARIANT` env (default `gated_fusion`); `load_model`/`discover_ckpt` build+glob that variant (needed because gated classifier in_dim=512 vs α-feature 513); About-tab architecture text + headline table updated (gate eqn, 512→256→2, gated row 0.839/0.912 as best, last-4 layers).
+- **Notebook 05** — discover/auto-recover/attn cells switched to `gated_fusion` + `preds_gated_fusion.npz`; intro flips the "concat beats cross-attn, XAI is consolation" framing to "gated cross-attn is best AND has intrinsic XAI"; take-aways method table / Finding 1 / per-method / "what's novel" reframed; note that attention picks change (re-inspect grid). SHAP/LIME findings (2221/2115/1007) unchanged (text_only).
+- **Notebook 06** — ckpt-env cell sets `HEMT_CLIP_CKPT` + `HEMT_CLIP_VARIANT=gated_fusion`; intro/prereqs/viva points updated (α is the gate; gate-vs-feature Q&A; HEMT-CLIP is best model). launch-code already passes `env={**os.environ}` so the subprocess inherits the vars.
+
+All notebooks parse; no leftover `preds_hemt_clip` refs. **Not yet committed/pushed** — Colab pulls from GitHub, so push before re-running 05/06.
 
 ---
 

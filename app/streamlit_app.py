@@ -46,6 +46,12 @@ from models.hemt_clip import build_from_config  # noqa: E402
 # Streamlit page config — must be first Streamlit call.
 st.set_page_config(page_title="HEMT-CLIP Demo", page_icon="🔍", layout="wide")
 
+# Which model variant the demo serves. The headline HEMT-CLIP is the α-gated
+# cross-attention model (`gated_fusion`); set HEMT_CLIP_VARIANT=hemt_clip to serve
+# the α-feature ablation instead. (The variant determines the classifier input dim,
+# so it must match the checkpoint being loaded.)
+VARIANT = os.environ.get("HEMT_CLIP_VARIANT", "gated_fusion")
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # Model + tokenizer loading (cached for the lifetime of the streamlit process)
@@ -53,11 +59,11 @@ st.set_page_config(page_title="HEMT-CLIP Demo", page_icon="🔍", layout="wide")
 
 
 @st.cache_resource(show_spinner="Loading HEMT-CLIP model…")
-def load_model(ckpt_path: str):
+def load_model(ckpt_path: str, variant: str = VARIANT):
     with open(ROOT / "configs/base.yaml") as f:
         cfg = yaml.safe_load(f)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = build_from_config(cfg, variant="hemt_clip").to(device).eval()
+    model = build_from_config(cfg, variant=variant).to(device).eval()
     payload = torch.load(ckpt_path, map_location=device, weights_only=False)
     state_dict = payload["model"] if isinstance(payload, dict) and "model" in payload else payload
     model.load_state_dict(state_dict, strict=True)
@@ -213,7 +219,7 @@ def discover_ckpt() -> str | None:
     ))
     if not ckpt_dir.exists():
         return None
-    candidates = [c for c in ckpt_dir.glob("hemt_hemt_clip_*_best.pt")
+    candidates = [c for c in ckpt_dir.glob(f"hemt_{VARIANT}_*_best.pt")
                   if "_seed" not in c.name]
     if not candidates:
         return None
@@ -231,12 +237,12 @@ st.sidebar.markdown("---")
 ckpt_path = discover_ckpt()
 if ckpt_path is None:
     st.error(
-        "No `hemt_clip` checkpoint found. Set `HEMT_CLIP_CKPT` to an explicit "
+        f"No `{VARIANT}` checkpoint found. Set `HEMT_CLIP_CKPT` to an explicit "
         "`*_best.pt` path, or `HEMT_CLIP_CKPT_DIR` to a directory containing one."
     )
     st.stop()
 
-model, device, cfg = load_model(ckpt_path)
+model, device, cfg = load_model(ckpt_path, VARIANT)
 tokenizer = load_tokenizer(cfg["model"]["text"]["name"])
 clip_model, clip_tokenizer, _ = load_clip(cfg["model"]["image"]["name"])
 samples = load_sample_examples(cfg["data"]["hdf5_path"])
@@ -349,7 +355,7 @@ if analyze:
             overlay = render_attention_overlay(uploaded_image, attn_grid)
             st.image(overlay, caption="Cross-attention overlay (hotter = higher attention weight)")
         else:
-            st.info("No attention weights returned (not a `hemt_clip` model?).")
+            st.info("No attention weights returned (not a cross-attention variant?).")
 
     with tab_shap:
         st.markdown(
@@ -380,11 +386,11 @@ if analyze:
 
 A binary classifier (Real vs Fake) on the Fakeddit multimodal corpus, combining:
 
-- **Text encoder:** RoBERTa-base (last 2 transformer layers fine-tuned), projected 768 → 512.
-- **Image encoder:** CLIP ViT-B/16 vision tower (last 2 transformer blocks fine-tuned), projected per patch 768 → 512.
+- **Text encoder:** RoBERTa-base (last 4 transformer layers fine-tuned), projected 768 → 512.
+- **Image encoder:** CLIP ViT-B/16 vision tower (last 4 transformer blocks fine-tuned), projected per patch 768 → 512.
 - **Cross-attention fusion:** 8-head MHA with text [CLS] as query, image patch tokens as keys/values; residual + LayerNorm + position-wise FFN.
-- **α scalar:** CLIP text-image cosine similarity (computed externally with the full CLIP model), concatenated to the fused 512-dim representation as a 513-dim feature vector.
-- **Classifier head:** Linear(513 → 256) → ReLU → Dropout(0.3) → Linear(256 → 2).
+- **CLIP-similarity gate (α):** the cross-attended vector is gated by the text-image cosine similarity — `fused = α·attended + (1−α)·text`. This α-gate is what makes HEMT-CLIP the best variant.
+- **Classifier head:** Linear(512 → 256) → ReLU → Dropout(0.3) → Linear(256 → 2).
 
 ### Test-set headline (n = 2,573 held-out samples)
 
@@ -392,12 +398,14 @@ A binary classifier (Real vs Fake) on the Fakeddit multimodal corpus, combining:
 |---|---:|---:|
 | `text_only` | 0.783 | 0.854 |
 | `image_only` | 0.814 | 0.882 |
-| `concat_fusion` | **0.832** | **0.904** |
-| `hemt_clip` | 0.828 | 0.892 |
+| `concat_fusion` | 0.832 | 0.904 |
+| `hemt_clip` (α-feature, ablation) | 0.828 | 0.892 |
+| **HEMT-CLIP (α-gate)** | **0.839** | **0.912** |
 
-Cross-attention does **not** beat simple concatenation on raw F1 (concat wins by +0.4 pt). Its
-contribution is **intrinsic explainability** — the attention heatmap shown above is a capability
-concatenation architecturally cannot provide. See report Chapter 6 for the full discussion.
+The **α-gated cross-attention HEMT-CLIP is the best model** — it beats plain concatenation (+0.7 pt F1 /
++0.8 pt AUC) and an α-as-feature ablation (+1.2 pt F1 / +2.0 pt AUC). It *also* provides **intrinsic
+explainability** — the attention heatmap shown above is a capability concatenation cannot provide. See
+report Chapter 6 for the full ablation.
 
 ### Explainability
 

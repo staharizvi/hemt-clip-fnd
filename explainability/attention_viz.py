@@ -1,7 +1,8 @@
 """Cross-attention heatmap visualization for the report (Blueprint §10.1).
 
-Loads the trained hemt_clip model + its test-set predictions (from
-training/evaluate.py), picks a stratified sample of examples — by correctness
+Loads a trained cross-attention model (default `gated_fusion` — the headline
+HEMT-CLIP) + its test-set predictions (from training/evaluate.py), picks a
+stratified sample of examples — by correctness
 × confidence — runs each through the model to capture the cross-attention
 weights from the fusion module, reshapes them onto the 14×14 patch grid
 (B/16 backbone), and overlays a heatmap on the original image.
@@ -19,7 +20,9 @@ Outputs:
 
 Example (in Colab, after running training/evaluate.py):
     !python -m explainability.attention_viz \\
-        --checkpoint /content/drive/MyDrive/hemt-clip-fnd/checkpoints/hemt_hemt_clip_20260530-0223_best.pt
+        --variant gated_fusion \\
+        --checkpoint /content/drive/MyDrive/hemt-clip-fnd/checkpoints/hemt_gated_fusion_20260531-2116_best.pt \\
+        --preds-npz outputs/eval/preds_gated_fusion.npz
 """
 
 from __future__ import annotations
@@ -47,9 +50,13 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--config", default=Path("configs/base.yaml"), type=Path)
     p.add_argument("--checkpoint", required=True, type=Path,
-                   help="Path to hemt_clip best.pt.")
-    p.add_argument("--preds-npz", default=Path("outputs/eval/preds_hemt_clip.npz"), type=Path,
-                   help="Predictions npz from training.evaluate (preds_hemt_clip.npz).")
+                   help="Path to the cross-attention model best.pt.")
+    p.add_argument("--variant", default="gated_fusion",
+                   choices=("hemt_clip", "gated_fusion"),
+                   help="Cross-attention variant to build. Default gated_fusion — the "
+                        "headline HEMT-CLIP (α-gated). Use hemt_clip for the α-feature ablation.")
+    p.add_argument("--preds-npz", default=Path("outputs/eval/preds_gated_fusion.npz"), type=Path,
+                   help="Predictions npz from training.evaluate (match the --variant).")
     p.add_argument("--split", default="test", choices=("train", "val", "test"))
     p.add_argument("--n-per-bucket", type=int, default=3,
                    help="Examples per bucket; 4 buckets × N = total. Default 3 → 12 examples.")
@@ -63,8 +70,9 @@ def setup_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 
-def load_model(ckpt_path: Path, cfg: dict, device: torch.device) -> torch.nn.Module:
-    model = build_from_config(cfg, variant="hemt_clip").to(device)
+def load_model(ckpt_path: Path, cfg: dict, device: torch.device,
+               variant: str = "gated_fusion") -> torch.nn.Module:
+    model = build_from_config(cfg, variant=variant).to(device)
     payload = torch.load(ckpt_path, map_location=device, weights_only=False)
     state_dict = payload["model"] if isinstance(payload, dict) and "model" in payload else payload
     model.load_state_dict(state_dict, strict=True)
@@ -221,8 +229,8 @@ def main() -> int:
     for name, idxs in buckets.items():
         LOG.info("  %-12s : %s", name, idxs)
 
-    LOG.info("loading hemt_clip from %s", args.checkpoint)
-    model = load_model(args.checkpoint, cfg, device)
+    LOG.info("loading %s from %s", args.variant, args.checkpoint)
+    model = load_model(args.checkpoint, cfg, device, variant=args.variant)
 
     ds = HEMTClipDataset(
         cfg["data"]["hdf5_path"], args.split,
