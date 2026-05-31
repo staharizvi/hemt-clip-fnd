@@ -1,7 +1,14 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** **α-gate wins → `gated_fusion` is now the headline HEMT-CLIP; source doc fully reframed.** Test (n=2573): full HEMT-CLIP (α-gate) F1 **0.8393** / Acc **0.8313** / AUC **0.9122** — best of all variants (concat 0.8319/0.9042; α-feature ablation 0.8277/0.8919). User decided (2026-06-01): `gated_fusion` = headline HEMT-CLIP, α-feature variant demoted to ablation; single seed is fine (no seeds 7/123). `report/Chapters_4_5_6_Source.md` rewritten throughout: headline-result box, master-correction item 3 reversed, §4.2.1/§4.3.1 novelty (lead with gated architecture), Table 4.3, §5.1.1/5.1.5/5.1.7 (α-gate is the model, classifier 512), Chapter 6 (Table 6.1 5 rows, §6.3.1/§6.3.3 gate-wins, §6.7). Notebooks 03/04 cells updated with the result. **Next:** user integrates the reframed prose into the docx; Ch.7; slides; re-run notebooks 05/06 on Colab (now wired to gated_fusion) to regenerate attention figures + demo.
+**Current phase:** **α-gate wins → `gated_fusion` is now the headline HEMT-CLIP; source doc fully reframed.** Test (n=2573): full HEMT-CLIP (α-gate) F1 **0.8393** / Acc **0.8313** / AUC **0.9122** — best of all variants (concat 0.8319/0.9042; α-feature ablation 0.8277/0.8919). User decided (2026-06-01): `gated_fusion` = headline HEMT-CLIP, α-feature variant demoted to ablation; single seed is fine (no seeds 7/123). `report/Chapters_4_5_6_Source.md` rewritten throughout: headline-result box, master-correction item 3 reversed, §4.2.1/§4.3.1 novelty (lead with gated architecture), Table 4.3, §5.1.1/5.1.5/5.1.7 (α-gate is the model, classifier 512), Chapter 6 (Table 6.1 5 rows, §6.3.1/§6.3.3 gate-wins, §6.7). Notebooks 03/04 cells updated with the result. **Next:** user integrates the reframed prose into the docx; Ch.7; slides. Demo is now `python run_demo.py` (notebook 06 removed).
 **Last updated:** 2026-06-01
+
+---
+
+### 2026-06-01 — Demo notebook → `run_demo.py` script; nb05 ran clean on gated_fusion
+- **Replaced `notebooks/06_demo.ipynb` with `run_demo.py`** (root). Plain launcher: discovers the `gated_fusion` checkpoint, exports `HEMT_CLIP_CKPT` + `HEMT_CLIP_VARIANT`, starts `app/streamlit_app.py`, opens an ngrok tunnel (`NGROK_AUTHTOKEN`), Ctrl-C tears down. Flags: `--variant`, `--ckpt`, `--ckpt-dir`, `--port`, `--no-tunnel` (local). README updated with a Demo section; nb06 `git rm`'d.
+- **Notebook 05 verified on Colab (2026-05-31 22:28):** attention ran on `gated_fusion` (loaded clean, **acc 0.8313** = its test acc → right model), 12 overlays + grid saved; SHAP 30/30 + LIME 30/30 on text_only; **0 errors**. New attention picks (correct_hi 324/1357/1446, wrong_hi 590/403/2367) differ from old hemt_clip run — Finding 1 specifics still need a visual re-confirm against the new grid.
+- nb05 markdown cells all reflect the new findings (intro now lists 3 methods incl LIME; auto-recover → `preds_gated_fusion`; shap-md drops the `hemt_clip` reference; take-aways "Next" → `run_demo.py`).
 
 ---
 
