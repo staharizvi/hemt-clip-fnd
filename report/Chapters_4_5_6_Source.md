@@ -594,11 +594,22 @@ A second pillar of the chapter: the gated cross-attention architecture wins on t
 exposes intrinsic, image-side explanations that concatenation cannot. **12 attention examples** and
 **30 SHAP + 30 LIME** text explanations were generated.
 
+> **Source of the attention heatmaps.** They are extracted from the **headline α-gated HEMT-CLIP**
+> (code `gated_fusion`, test acc 0.8313) — the gate is applied *after* the attention is computed, so these
+> are the best model's genuine cross-attention weights. The 12 examples are picked from
+> `preds_gated_fusion.npz`, stratified by correctness × confidence (notebook 05). The composite
+> `attention_grid.png` is the single §6.4 figure for the intrinsic method.
+
 **Finding 1 — Cross-attention produces structured, not random, heatmaps.** Every example shows
 non-uniform spatial focus; the model localises cleanly on figures/faces/text overlays in content-rich
 images and is more diffuse on cluttered/text-heavy images — but the diffuseness tracks *image content*,
 not method failure. Honest framing: *"cross-attention produces interpretable heatmaps whose focus quality
-varies with image structure."* *(Headline figure: `attention_grid.png`.)*
+varies with image structure."*
+
+> ✎ **Re-confirm the specific examples before final write-up.** The "figures/faces in content-rich images"
+> description is illustrative and was drafted from an earlier run; the heatmap picks regenerated on the
+> gated model, so inspect the current `attention_grid.png` and name the actual regions you see (the general
+> claim about structured, content-dependent focus holds regardless). *(Headline figure: `attention_grid.png`.)*
 
 **Finding 2 — Error analysis, sample 2221 (Kristallnacht) — methods agree on the mechanism.** Title:
 *"a german attacks jewishowned property during the kristallnacht colourized."* The text-only model
