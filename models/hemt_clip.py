@@ -10,7 +10,11 @@ Ablation variants (variant kwarg):
     "text_only"      : classifier on text_feats only
     "image_only"     : classifier on pooled image features only
     "concat_fusion"  : classifier on [text_feats, pooled_img, alpha]
-    "hemt_clip"      : full cross-attention fusion + alpha
+    "hemt_clip"      : full cross-attention fusion, alpha concatenated as a feature
+    "gated_fusion"   : full cross-attention fusion, alpha used as a CLIP-similarity
+                       gate inside fusion (alpha*attended + (1-alpha)*text); alpha
+                       is NOT concatenated. Isolates "alpha as gate" vs "alpha as
+                       feature" against hemt_clip.
 
 forward() accepts the dict produced by HEMTClipDataset:
     input_ids, attention_mask, pixel_values, alpha, label (label is unused).
@@ -29,7 +33,7 @@ from models.fusion import CrossAttentionFusion
 from models.image_encoder import ImageEncoder
 from models.text_encoder import TextEncoder
 
-VARIANTS = ("text_only", "image_only", "concat_fusion", "hemt_clip")
+VARIANTS = ("text_only", "image_only", "concat_fusion", "hemt_clip", "gated_fusion")
 
 
 class HEMTCLIP(nn.Module):
@@ -53,11 +57,13 @@ class HEMTCLIP(nn.Module):
 
         self.variant = variant
         # alpha is a text-image agreement signal; ignore it for unimodal baselines.
+        # `gated_fusion` consumes alpha inside the fusion gate, so it is NOT
+        # concatenated to the classifier input (hence excluded here).
         self.use_alpha = use_alpha and variant in {"concat_fusion", "hemt_clip"}
 
         needs_text = variant != "image_only"
         needs_image = variant != "text_only"
-        needs_fusion = variant == "hemt_clip"
+        needs_fusion = variant in {"hemt_clip", "gated_fusion"}
 
         self.text_encoder = TextEncoder(**text_cfg) if needs_text else None
         self.image_encoder = ImageEncoder(**image_cfg) if needs_image else None
@@ -75,6 +81,9 @@ class HEMTCLIP(nn.Module):
             return 2 * proj_dim + (1 if self.use_alpha else 0)
         if self.variant == "hemt_clip":
             return proj_dim + (1 if self.use_alpha else 0)
+        if self.variant == "gated_fusion":
+            # alpha is consumed by the gate, not concatenated -> just the fused vector.
+            return proj_dim
         raise AssertionError("unreachable")
 
     def forward(self, batch: dict[str, torch.Tensor]) -> dict[str, Any]:
@@ -106,6 +115,10 @@ class HEMTCLIP(nn.Module):
                 features = torch.cat([fused, batch["alpha"].unsqueeze(-1)], dim=-1)
             else:
                 features = fused
+        elif self.variant == "gated_fusion":
+            # alpha gates the fusion (alpha*attended + (1-alpha)*text); not concatenated.
+            fused, attn_weights = self.fusion(text_feats, patches, alpha=batch["alpha"])
+            features = fused
         else:
             raise AssertionError("unreachable")
 

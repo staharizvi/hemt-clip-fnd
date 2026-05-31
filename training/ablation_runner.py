@@ -4,7 +4,9 @@ Variants (Blueprint §7):
     A: text_only       — RoBERTa + classifier
     B: image_only      — CLIP ViT + classifier
     C: concat_fusion   — [text, image, alpha] -> classifier
-    D: hemt_clip       — full cross-attention + alpha -> classifier
+    D: hemt_clip       — cross-attention, alpha concatenated as a feature
+    E: gated_fusion    — cross-attention, alpha as a CLIP-similarity gate (ablation
+                         vs D: tests "alpha as gate" vs "alpha as learned feature")
 
 Calls `python -m training.train` for each variant in its own subprocess so
 GPU memory / random state are fully reset between runs. Per-variant logs

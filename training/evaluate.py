@@ -1,11 +1,11 @@
-"""Test-set evaluation + metrics for all 4 HEMT-CLIP ablation variants.
+"""Test-set evaluation + metrics for all trained HEMT-CLIP ablation variants.
 
 Runs each variant's best checkpoint on the requested split (default: test),
 computes the Blueprint §9.1 metrics (accuracy, precision/recall/F1 per-class,
 AUC-ROC, confusion matrix), and saves the report-ready figures:
 
     - 4 confusion-matrix PNGs (one per variant)
-    - 1 ROC overlay PNG (all 4 variants on one axes)
+    - 1 ROC overlay PNG (all discovered variants on one axes)
     - 1 ablation F1 bar PNG
     - 1 per-class precision/recall grouped bar PNG
 
@@ -81,12 +81,18 @@ def discover_checkpoints(ckpt_dir: Path) -> dict[str, Path]:
     for variant in VARIANTS:
         candidates = list(ckpt_dir.glob(f"hemt_{variant}_*_best.pt"))
         if not candidates:
-            raise FileNotFoundError(
-                f"No checkpoint matching hemt_{variant}_*_best.pt in {ckpt_dir}"
-            )
+            # Skip rather than abort: a variant may simply not be trained yet
+            # (e.g. the optional `gated_fusion` ablation). Evaluate whatever exists.
+            LOG.warning("no checkpoint matching hemt_%s_*_best.pt in %s — skipping variant",
+                        variant, ckpt_dir)
+            continue
         no_seed = [c for c in candidates if "_seed" not in c.name]
         chosen = sorted(no_seed or candidates, key=lambda p: p.stat().st_mtime)[-1]
         out[variant] = chosen
+    if not out:
+        raise FileNotFoundError(
+            f"No variant checkpoints (hemt_*_best.pt) found in {ckpt_dir}"
+        )
     return out
 
 
@@ -180,6 +186,7 @@ COLOR_BY_VARIANT = {
     "image_only":    "#bbbbbb",
     "concat_fusion": "#4477aa",
     "hemt_clip":     "#cc6677",
+    "gated_fusion":  "#228833",
 }
 
 

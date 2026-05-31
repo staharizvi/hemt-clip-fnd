@@ -1,11 +1,45 @@
 # HEMT-CLIP Progress Log
 
-**Current phase:** **Streamlit demo implemented.** `app/streamlit_app.py` (~340 LOC) + `notebooks/06_demo.ipynb` (18 cells) wired up. Live cross-attention heatmap, pre-computed SHAP lookup, custom-image upload + test-sample dropdown, ngrok-tunneled deployment for viva. All blueprint §17 engineering deliverables now ticked. Ready for Chapter 6 + Chapter 7 prose draft and viva prep.
+**Current phase:** **Novelty repositioned + `gated_fusion` ablation added (code).** Report novelty reframed from "novel cross-attention architecture" (weak: never built as described, loses to concat on F1) to three defensible contributions led by the **α-as-learned-feature vs α-as-gate** empirical result. Added a `gated_fusion` model variant to test it head-to-head. **Pending:** user trains `gated_fusion` on Colab (~6 min) + re-runs eval to fill Table 6.1 / §6.3.3.
 **Last updated:** 2026-05-31
 
 ---
 
 ## Done
+
+### 2026-05-31 — Novelty reframe + `gated_fusion` variant (code change)
+**Decision (user-chosen):** novelty framing = **α-finding + XAI** (not "novel architecture"); and **yes, build the gated variant** to make the α design choice an empirical result.
+
+**New ablation variant `gated_fusion`** — same cross-attention backbone as `hemt_clip`, but α is used as a CLIP-similarity **gate** inside fusion (`α·attended + (1−α)·text`) instead of being concatenated as a feature. Isolates *how α is used* (gate = prior-work approach e.g. FND-CLIP, vs feature = ours). Files touched:
+- `models/fusion.py` — `forward()` takes optional `alpha`; when given, applies the parameter-free gate (cast to autocast dtype). Default path unchanged → existing `hemt_clip` checkpoints still load.
+- `models/hemt_clip.py` — added `gated_fusion` to `VARIANTS`; `needs_fusion` includes it; classifier in_dim = proj_dim (α not concatenated); forward passes `alpha=batch["alpha"]` into fusion.
+- `training/evaluate.py` — `discover_checkpoints` now **skips** missing variants with a warning instead of raising (so eval runs before the new variant is trained); added a color for it; docstrings de-hardcoded from "4 variants".
+- `training/ablation_runner.py` — docstring lists variant E.
+- `configs/base.yaml` — `gated_fusion` added to `ablation.variants` with rationale comment.
+
+**Why this is the novelty fix:** the report's claimed novelty (α-gated "CLIP-guided fusion") was never implemented and the cross-attention architecture loses to concat on test F1. The α-inversion finding (fake α > real α on Fakeddit) means gating is the *wrong* inductive bias here; testing gate-vs-feature on the same backbone turns "we didn't build the gate" into "we tested it and here's why a learned feature is better." Source doc §4.3.1 + §6.3.3 rewritten accordingly.
+
+**To run (Colab T4, ~6 min + ~4 min eval):**
+- `!python -m training.train --variant gated_fusion` (writes `hemt_gated_fusion_*_best.pt` to Drive)
+- `!python -m training.evaluate --split test` (regenerates the now-5-variant table + plots)
+- Then recompute fake-vs-real α split on **B/16** in notebook 01 (CPU, seconds) before quoting the exact Δ.
+
+**Notebooks wired (2026-05-31):** the run is now paste-free in the notebooks (no loose commands):
+- **nb 03** — new `gated_fusion` section (3 cells: framing md / `!python -m training.train --variant gated_fusion` / val-results placeholder) inserted after the seed-robustness results, before the "After training" wrap-up.
+- **nb 04** — `intro` updated to mention the 5th variant; `discover-code` and `figures-code` made tolerant of a not-yet-trained variant (guard `discovered.get()` / `png.exists()` — needed because `gated_fusion` is now in `VARIANTS`); new take-away cell with the α-gate-vs-α-feature comparison table (§6.3.3) to fill after eval.
+- **nb 01** — `intro`/`alpha-md`/`takeaways-md` corrected from ViT-B/32 → **B/16** (α stats 0.09–0.49 / mean ≈ 0.28); the fake>real α finding now explicitly linked to the novelty + gated experiment. The `alpha-code` cell computes the by-label split dynamically, so re-running it on the B/16 HDF5 prints the current Δ.
+
+### 2026-05-31 — Chapter 4/5/6 source document (`report/Chapters_4_5_6_Source.md`)
+Extracted the existing report's full TOC/heading hierarchy from `FYP final project.docx` (it ends at Ch. 5; **Ch. 6 Results does not exist yet**). Wrote a single source doc organised by those exact headings so prose drops straight in. Chapters 4–5 in the docx are a pre-execution **plan** that diverged from what was built; the doc embeds **9 plan-vs-reality corrections**, 3 load-bearing:
+- **α is a concatenated classifier feature (513→256→2), NOT a fusion gate.** The docx's novel-contribution formula `fused = α·attended + (1−α)·text` was never implemented (verified in `models/fusion.py` + `models/hemt_clip.py`). This touches the report's headline "novel contribution" claim.
+- **Image encoder is CLIP ViT-B/16 (196 patch tokens, last 4 blocks), not B/32 (49 tokens, last 3).**
+- **SHAP is partition/Owen-value (perturbation), not GradientExplainer; LIME implemented, not "optional".**
+- Plus: label smoothing 0.0 not 0.1; training ~6 min/variant not 2–5 h/epoch (two *stages* not per-epoch stages); corpus 17,149 not 100K; explainability evaluated by cross-method agreement not a user study.
+- Ch. 6 is fully drafted (Table 6.1, ablation, seed band, 4 XAI findings, error analysis) since it's net-new.
+
+**Next:** user applies the corrections + prose into the docx, drafts Ch. 7 (Conclusion), slides, demo dry-runs.
+
+---
 
 ### 2026-05-31 — Streamlit demo (`app/streamlit_app.py` + notebook 06)
 **`app/streamlit_app.py` — new (~340 LOC, was a 13-line stub).** Per Blueprint §11.

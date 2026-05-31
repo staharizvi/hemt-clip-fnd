@@ -74,4 +74,9 @@ checkpointing:
   keep_last_n: 2
 
 ablation:
-  variants: [text_only, image_only, concat_fusion, hemt_clip]
+  # gated_fusion (added 2026-05-31): same cross-attention as hemt_clip, but alpha
+  # is used as a CLIP-similarity gate inside fusion (alpha*attended + (1-alpha)*text)
+  # instead of being concatenated as a feature. Isolates "alpha as gate" (prior-work
+  # approach, e.g. FND-CLIP) vs "alpha as learned feature" (ours) — the empirical
+  # test behind the report's novelty claim.
+  variants: [text_only, image_only, concat_fusion, hemt_clip, gated_fusion]

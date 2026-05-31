@@ -12,6 +12,13 @@ Returns:
     fused : (B, 512)
     attn  : (B, num_heads, 1, P) — per-head, kept un-averaged for the
             explainability viz; trainer can mean over heads for logging.
+
+CLIP-similarity gating (optional, for the `gated_fusion` ablation):
+    If `alpha` is passed to forward(), the attended representation is blended
+    with the raw text query as `alpha * attended + (1 - alpha) * text`, the
+    similarity-weighted fusion used by prior CLIP-based FND work (e.g. FND-CLIP).
+    When `alpha` is None (the default, used by `hemt_clip`) the module is
+    unchanged — the gate adds no parameters, so checkpoints are interchangeable.
 """
 
 from __future__ import annotations
@@ -48,8 +55,9 @@ class CrossAttentionFusion(nn.Module):
 
     def forward(
         self,
-        text_feats: torch.Tensor,    # (B, 512)
-        image_patches: torch.Tensor, # (B, P, 512)
+        text_feats: torch.Tensor,        # (B, 512)
+        image_patches: torch.Tensor,     # (B, P, 512)
+        alpha: torch.Tensor | None = None,  # (B,) CLIP similarity — enables gating when given
     ) -> tuple[torch.Tensor, torch.Tensor]:
         q = text_feats.unsqueeze(1)              # (B, 1, 512)
         attn_out, attn_weights = self.attn(
@@ -59,7 +67,13 @@ class CrossAttentionFusion(nn.Module):
             need_weights=True,
             average_attn_weights=False,          # keep per-head for viz: (B, H, 1, P)
         )
-        x = self.norm1(q + self.dropout(attn_out))   # (B, 1, 512)
-        x = self.norm2(x + self.dropout(self.ffn(x)))
+        attended = self.norm1(q + self.dropout(attn_out))   # (B, 1, 512)
+        if alpha is not None:
+            # CLIP-similarity gate: trust the cross-attended (image-informed)
+            # vector in proportion to text-image agreement, fall back to text
+            # otherwise. Parameter-free, so it shares weights with the un-gated path.
+            a = alpha.view(-1, 1, 1).to(attended.dtype)   # match autocast dtype
+            attended = a * attended + (1.0 - a) * q
+        x = self.norm2(attended + self.dropout(self.ffn(attended)))
         fused = x.squeeze(1)                          # (B, 512)
         return fused, attn_weights
