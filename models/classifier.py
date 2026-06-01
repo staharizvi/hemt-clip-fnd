@@ -13,7 +13,7 @@ in_dim is variant-dependent (set by HEMTCLIP):
 from __future__ import annotations
 
 import torch
-import torch.nn as nn
+import torch.nn as n
 
 
 class ClassifierHead(nn.Module):
