@@ -83,6 +83,16 @@ a fixed seed (42) guarantees reproducibility.
 > download, broken-URL filtering, and HDF5 packing): **8,716 real / 8,433 fake (50.83% / 49.17%)**,
 > split **12,003 / 2,573 / 2,573**. State this number; it is what every result in Chapter 6 is computed on.
 
+**Dataset statistics (notebook 01, final ViT-B/16 corpus).** Two facts that justify design choices:
+- **Title length** (RoBERTa tokeniser): median **10** tokens, p99 **35**, max **71** → the `max_text_len = 128`
+  cap truncates **0%** of titles. Titles are short, which is why the image channel matters.
+- **CLIP similarity α:** mean **0.276**, std **0.054**, range **[0.086, 0.490]**, no NaNs. **By label, fake posts
+  show a *higher* mean α than real ones: fake 0.300 vs real 0.253 (Δ = +0.048, ~1 std apart).** This is
+  counter-intuitive — one would expect manipulated posts to be *less* aligned — but it fits Fakeddit's
+  composition (satire/mislabeled posts pair a dramatic caption with on-topic imagery, while real news
+  pairs a generic stock photo with a specific headline). The distributions overlap heavily, so α alone is
+  a weak predictor, but the consistent direction is what makes the **α-gate** (§4.3.1, §6.3.3) effective.
+
 ## 4.2 Workflow of the system
 
 The end-to-end workflow (Figure 4.1) is a **dual-encoder architecture combined through cross-attention**:
@@ -142,7 +152,7 @@ step would be wasteful):
 > → **512 → 256 → 2**.
 >
 > *Context for the discussion section:* on Fakeddit, fake posts actually show a *higher* mean α than real
-> ones (§5.1.2). One might expect this to break a "low α ⇒ fake" gate — yet the gate is the **best** model.
+> ones (§4.1.2). One might expect this to break a "low α ⇒ fake" gate — yet the gate is the **best** model.
 > The reason is that the gate is **not** a naive "low similarity ⇒ fake" rule; it is a learned soft-blend
 > of *how much image-attended information to inject*, and the downstream classifier learns the rest. We
 > demonstrate the gate's value directly with an ablation (§6.3.3) that compares it against (a) concatenating
@@ -231,13 +241,13 @@ flawless-agreement story.
 
 #### Contribution 3 (Empirical dataset finding) — α behaves opposite to the prevailing assumption, yet gating still wins
 Prior CLIP-based detectors assume **low text–image similarity signals manipulation**. On Fakeddit we find
-the **opposite**: fake posts have a *higher* mean CLIP similarity than real ones (§5.1.2). The interesting
+the **opposite**: fake posts have a *higher* mean CLIP similarity than real ones (§4.1.2). The interesting
 part is that **the gate still wins despite this** — confirming it is not a naive "low α ⇒ fake" rule but a
 learned soft-blend of how much image-attended information to inject. This finding both characterises the
 dataset and explains *why* the gated design generalises.
 
-> Quote the fake-vs-real α split from the final ViT-B/16 run (notebook 01 — re-run the α cell). The
-> *direction* (fake > real) is the load-bearing claim; the earlier 0.290/0.244 figures were on ViT-B/32.
+> α split (final ViT-B/16, notebook 01): **fake 0.300 vs real 0.253, Δ = +0.048** — the *direction*
+> (fake > real) is the load-bearing claim and holds across backbones (B/32 gave 0.290/0.244).
 
 #### (Supporting) Resource-Efficient Staged Fine-Tuning
 Progressive unfreezing trades adaptation against cost: **Stage 1** trains only projection + fusion +
@@ -575,7 +585,7 @@ So the ablation establishes two things at once: cross-attention with an α-gate 
 variant, which keeps the cross-attention but drops the gate, actually falls *below* plain concat.
 
 **Why the gate works even though α "points the wrong way."** One might expect gating to fail here: on
-Fakeddit fake posts have *higher* α than real ones (§5.1.2), the opposite of the "low similarity ⇒
+Fakeddit fake posts have *higher* α than real ones (§4.1.2), the opposite of the "low similarity ⇒
 manipulation" intuition. The gate wins anyway because it is **not** a hand-coded "low α ⇒ fake" rule — it
 is a learned soft-blend that controls *how much image-attended information to mix into the text
 representation*, and the downstream classifier learns the decision boundary. The α-direction finding
@@ -708,8 +718,7 @@ Paths under `outputs/` (produced on Drive by the notebooks; the local repo keeps
 - Gate vs feature: **+1.16 pt F1 / +2.03 pt AUC**; gate vs concat: **+0.74 / +0.80**.
 - Multimodal premium: **+2.58 pt** test F1 (image-only → full HEMT-CLIP).
 - Title length (RoBERTa): median 10, p99 35, max 71 → 0% truncated at 128.
-- α (ViT-B/16): mean 0.276, std 0.054, range [0.086, 0.490], NaN = 0; fake mean > real mean
-  (Δ ≈ +0.046 measured on ViT-B/32 — recompute on B/16 before quoting the exact number; direction holds).
+- α (ViT-B/16): mean 0.276, std 0.054, range [0.086, 0.490], NaN = 0; **fake 0.300 vs real 0.253 (Δ +0.048)** — fake higher (direction holds across backbones; B/32 gave 0.290/0.244).
 - XAI volume: 12 attention examples · 30 SHAP · 30 LIME.
 - Trainable params: text 14.70M · image 15.10M · concat 29.80M · HEMT-CLIP (gate & feature) 32.82M.
 - **Single-seed (42)** headline; optional gate seeds 7/123 for mean ± std (~12 min) noted as a limitation.
