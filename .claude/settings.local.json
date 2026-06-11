@@ -23,7 +23,15 @@
       "Bash(grep -vE \"^\\\\s*$\")",
       "Bash(node -e ' *)",
       "Bash(PYTHONIOENCODING=ascii:replace py -c ' *)",
-      "Bash(PYTHONIOENCODING=utf-8 py extract_outputs.py)"
+      "Bash(PYTHONIOENCODING=utf-8 py extract_outputs.py)",
+      "Bash(PYTHONIOENCODING=utf-8 py -c ' *)",
+      "Bash(PYTHONIOENCODING=ascii:replace py _edit_demo.py)",
+      "Bash(rm -rf _cand _edit_demo.py)",
+      "Bash(ls _cand _edit_demo.py)",
+      "Bash(PYTHONIOENCODING=ascii:replace py -c \"print\\(open\\('progress.md',encoding='utf-8'\\).read\\(\\)[-1200:]\\)\")",
+      "Bash(PYTHONIOENCODING=utf-8 py -c \"import importlib.util as u; print\\('matplotlib','OK' if u.find_spec\\('matplotlib'\\) else 'MISSING'\\)\")",
+      "Bash(PYTHONIOENCODING=utf-8 py _make_slide.py)",
+      "Bash(rm -rf _chk _make_slide.py)"
     ]
   }
 }

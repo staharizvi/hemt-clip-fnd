@@ -1,13 +1,18 @@
-"""Post-hoc explainability — SHAP for text tokens (Blueprint §10.2).
+"""Post-hoc explainability — SHAP for text tokens.
 
-Runs `shap.Explainer` (Partition explainer over a `shap.maskers.Text`) on the
-text_only variant of the trained model, attributing each test-set title's
-prediction to its individual tokens. Why text_only and not hemt_clip's text
-branch: SHAP attributes a model's predictions, so the cleanest answer to
-"which words pushed the verdict?" comes from a text-only model whose
-verdict is a function of text alone — clean question, clean answer.
-(Multimodal SHAP is intentionally skipped per Blueprint §10.2: marginal
-value for FYP scope, considerable complexity.)
+Runs `shap.Explainer` (Partition explainer over a `shap.maskers.Text`) attributing
+each test-set title's prediction to its individual tokens. Two modes via --model:
+
+  text_only    : attribute the text_only variant — the cleanest "which words, in
+                 isolation?" baseline (verdict is a pure function of text).
+  gated_fusion : attribute the **headline multimodal HEMT-CLIP** with the sample's
+                 real image + alpha held fixed (see explainability.mm_common). The
+                 perturbations vary only the text, so the attribution explains the
+                 actual multimodal verdict — not a separate text-only proxy.
+
+Running both on the same sample set (drive --pick-from-npz from the same npz) lets
+Chapter 6.4 compare them: does adding the image change which words matter?
+(This supersedes the old Blueprint §10.2 "skip multimodal SHAP" stance.)
 
 Sample selection (default 30): stratified across {correct, wrong} × {real,
 fake} with three confidence quantiles per cell — gives a mix of confident
@@ -41,6 +46,7 @@ import yaml
 import matplotlib.pyplot as plt
 
 from data.dataset import HEMTClipDataset
+from explainability.mm_common import make_mm_text_predict_fn, pick_samples
 from models.hemt_clip import build_from_config
 
 LOG = logging.getLogger("shap-text")
@@ -49,10 +55,17 @@ LOG = logging.getLogger("shap-text")
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--config", default=Path("configs/base.yaml"), type=Path)
+    p.add_argument("--model", default="text_only", choices=("text_only", "gated_fusion"),
+                   help="Which model to attribute. gated_fusion = multimodal HEMT-CLIP "
+                        "with each sample's image + alpha held fixed.")
     p.add_argument("--checkpoint", required=True, type=Path,
-                   help="Path to text_only best.pt.")
+                   help="Path to the best.pt matching --model.")
     p.add_argument("--preds-npz", default=Path("outputs/eval/preds_text_only.npz"), type=Path,
-                   help="Predictions npz from training.evaluate (preds_text_only.npz).")
+                   help="Predictions npz from training.evaluate (drives sample picks unless "
+                        "--pick-from-npz is given).")
+    p.add_argument("--pick-from-npz", default=None, type=Path,
+                   help="Optional: stratify sample picks from this npz instead of --preds-npz, "
+                        "so different --model runs can explain the SAME samples for comparison.")
     p.add_argument("--split", default="test", choices=("train", "val", "test"))
     p.add_argument("--n-samples", type=int, default=30,
                    help="Total samples to explain (Blueprint §10.5 asks for 30+).")
@@ -92,36 +105,6 @@ def build_predict_fn(model, tokenizer, device, max_len):
             out = model(batch)
         return torch.softmax(out["logits"].float(), dim=-1).cpu().numpy()
     return f
-
-
-def pick_samples(preds: np.ndarray, probs: np.ndarray, labels: np.ndarray,
-                 n: int, rng: np.random.Generator) -> list[int]:
-    """Stratify across {correct, wrong} × {real, fake} with low/mid/high confidence
-       within each cell. Tops up with random picks if n exceeds the strata."""
-    correct = preds == labels
-    confidence = probs.max(axis=1)
-    picks: list[int] = []
-
-    for is_correct in (True, False):
-        for label_val in (0, 1):
-            mask = (correct == is_correct) & (labels == label_val)
-            pool = np.nonzero(mask)[0]
-            if len(pool) == 0:
-                continue
-            sorted_by_conf = pool[np.argsort(confidence[pool])]
-            n_pick_per_cell = max(1, n // 8)  # ~8 quantile slots
-            for q in np.linspace(0.1, 0.9, n_pick_per_cell):
-                idx = int(q * (len(sorted_by_conf) - 1))
-                cand = int(sorted_by_conf[idx])
-                if cand not in picks:
-                    picks.append(cand)
-
-    if len(picks) < n:
-        remaining = np.setdiff1d(np.arange(len(preds)), picks)
-        if len(remaining) > 0:
-            extra = rng.choice(remaining, size=min(n - len(picks), len(remaining)), replace=False)
-            picks.extend(int(x) for x in extra)
-    return picks[:n]
 
 
 def plot_token_importance(values: np.ndarray, tokens: list[str], pred_label: int,
@@ -247,13 +230,14 @@ def main() -> int:
         return 1
     from transformers import AutoTokenizer
 
-    LOG.info("loading preds from %s", args.preds_npz)
-    npz = np.load(args.preds_npz)
+    pick_npz_path = args.pick_from_npz or args.preds_npz
+    LOG.info("loading picks/labels from %s", pick_npz_path)
+    npz = np.load(pick_npz_path)
     preds, probs, labels = npz["preds"], npz["probs"], npz["labels"]
-    LOG.info("preds: n=%d  acc=%.4f", len(preds), float((preds == labels).mean()))
+    LOG.info("pick-npz: n=%d  acc=%.4f", len(preds), float((preds == labels).mean()))
 
-    LOG.info("loading text_only from %s", args.checkpoint)
-    model = build_from_config(cfg, variant="text_only").to(device)
+    LOG.info("loading %s from %s", args.model, args.checkpoint)
+    model = build_from_config(cfg, variant=args.model).to(device)
     payload = torch.load(args.checkpoint, map_location=device, weights_only=False)
     state_dict = payload["model"] if isinstance(payload, dict) and "model" in payload else payload
     model.load_state_dict(state_dict, strict=True)
@@ -271,25 +255,40 @@ def main() -> int:
     chosen = pick_samples(preds, probs, labels, args.n_samples, rng)
     LOG.info("picked %d samples", len(chosen))
 
-    predict_fn = build_predict_fn(model, tokenizer, device, max_len)
+    # text_only: one global predict-fn. gated_fusion: a per-sample fn (this sample's
+    # image + alpha held fixed), built inside the loop. The masker is shared.
+    global_predict_fn = (build_predict_fn(model, tokenizer, device, max_len)
+                         if args.model == "text_only" else None)
     masker = shap.maskers.Text(tokenizer)
-    explainer = shap.Explainer(predict_fn, masker, output_names=["real", "fake"])
 
     token_records: list[dict] = []
     manifest: list[dict] = []
-    LOG.info("running SHAP on %d samples (~5-10 min on T4)...", len(chosen))
+    LOG.info("running SHAP (%s) on %d samples (~5-10 min on T4)...", args.model, len(chosen))
 
     for i, ds_idx in enumerate(chosen):
         hdf5_row = int(ds.indices[ds_idx])
         raw_text = f_h5["texts"][hdf5_row]
         text = raw_text.decode("utf-8") if isinstance(raw_text, bytes) else str(raw_text)
-        pred = int(preds[ds_idx])
         label = int(labels[ds_idx])
-        conf = float(probs[ds_idx].max())
+
+        if args.model == "gated_fusion":
+            s = ds[ds_idx]
+            predict_fn = make_mm_text_predict_fn(
+                model, tokenizer, device, max_len,
+                s["pixel_values"].unsqueeze(0), s["alpha"].view(1))
+        else:
+            predict_fn = global_predict_fn
+
+        # pred/conf from the model actually being explained (not the pick npz),
+        # so titles/status are correct even when picks come from another model.
+        base = predict_fn([text])[0]
+        pred = int(np.argmax(base))
+        conf = float(base.max())
 
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
+                explainer = shap.Explainer(predict_fn, masker, output_names=["real", "fake"])
                 shap_values = explainer([text])
         except Exception as e:
             LOG.warning("  [%02d] ds_idx=%d SHAP failed: %s", i, ds_idx, e)
@@ -312,6 +311,7 @@ def main() -> int:
 
         manifest.append({
             "i": i, "ds_idx": int(ds_idx), "hdf5_row": hdf5_row,
+            "model": args.model,
             "pred": pred, "label": label, "confidence": conf,
             "status": status, "file": stem + ".png", "text": text,
         })
