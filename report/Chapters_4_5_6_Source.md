@@ -42,6 +42,10 @@ plan. Where the existing report text describes something the implementation late
 > 7. **Training took ~6 minutes per variant, not "2–5 hours per epoch".** Two *stages*, not per-epoch stages.
 > 8. **Dataset is 17,149 samples** (final corpus), not 100,000 / 50,000.
 > 9. **Explainability was evaluated by cross-method agreement analysis, not a user study.**
+> 10. **SHAP/LIME now attribute the *multimodal* HEMT-CLIP** (each sample's image + α held fixed; only the
+>     text is perturbed), with the text-only model kept as a **baseline** for comparison — earlier drafts ran
+>     them on text-only "by design". A **fourth** method, **modality contribution**, quantifies that the
+>     fused model is strongly **image-dominant** (Ch 6.4, Finding 2).
 
 ---
 ---
@@ -67,7 +71,7 @@ resource constraints.
 
 A supervised-learning framework in four sequential stages: **(1) data preparation** (preprocessing +
 stratified **70/15/15** train/val/test split), **(2) model development** via *staged* fine-tuning,
-**(3) explainability integration** through a three-level framework, and **(4) evaluation** on the
+**(3) explainability integration** through a multimodal four-method framework, and **(4) evaluation** on the
 held-out test set. The staged regime resists overfitting and enables diagnostic inspection within a
 limited GPU-time budget.
 
@@ -170,24 +174,26 @@ L = − Σ  y_c · log p_c          (label smoothing = 0.0)
 
 ### 4.2.3 Explainability Framework
 
-A **three-level** framework combining intrinsic and post-hoc methods for complementary views
-(Table 4.2 below). The three levels are deliberately chosen to span *intrinsic vs post-hoc* and two text
-granularities (sub-word vs whole-word), so an attribution can be argued by **agreement between
-independent procedures** rather than relying on any single method.
+A **truly multimodal** framework: every method explains the headline α-gated HEMT-CLIP, or compares
+directly against it (Table 4.2). It spans *intrinsic vs post-hoc*, both text granularities (sub-word vs
+whole-word), and — crucially — a **cross-modal** method, so we can argue not only *which tokens* but *which
+modality* drove a verdict, and validate text claims by agreement between independent procedures.
 
 **Table 4.2 — Levels of explainability & techniques**
 
 | Level | Method | Type | Output |
 |---|---|---|---|
 | 1 | Cross-attention visualisation | **Intrinsic** | Text→image attention heatmaps (14×14 patch grid) |
-| 2 | **SHAP** (partition / Owen-value) | Post-hoc, perturbation | Token importance (BPE sub-word granularity) |
-| 3 | **LIME** (local linear surrogate) | Post-hoc, perturbation | Token importance (whole-word granularity) |
+| 2 | **SHAP** (partition / Owen-value) | Post-hoc, perturbation | Token importance (BPE sub-word), on the **multimodal model** (image fixed) |
+| 3 | **LIME** (local linear surrogate) | Post-hoc, perturbation | Token importance (whole-word), on the **multimodal model** (image fixed) |
+| 4 | **Modality contribution** | Post-hoc, occlusion | **Cross-modal**: per-sample logit Δ when each modality is removed |
 
 > ### ⚠ CORRECTION 4 & 5 — SHAP type and LIME status
 > (4) SHAP is **not gradient-based**: it is a **partition (Owen-value) explainer**, which is
 > **perturbation-based**. Remove "GradientExplainer / gradient" wording. (5) **LIME is not optional — it
-> was implemented** on the same 30 samples as SHAP. Both run on the **text-only model** (so the attribution
-> question "which words drove the verdict?" has clean semantics).
+> was implemented** on the same 30 samples as SHAP. **Both now run on the headline multimodal HEMT-CLIP**
+> (the sample's image + α are held fixed and only the text is perturbed, so the attribution explains the
+> *actual multimodal verdict*); the text-only model is retained only as a baseline for the §6.4 comparison.
 
 ### 4.2.4 Justification for Multimodal Approach
 
@@ -230,14 +236,17 @@ of gating it (+1.16 pt F1 / +2.03 pt AUC). A clean three-way ablation (Chapter 6
 *both* that fusion helps *and* that **gating α beats concatenating it** — the gate is not decorative, it is
 the single best design choice. (The gate is also parameter-free, so this gain costs no extra weights.)
 
-#### Contribution 2 (Methodological) — integrated three-level explainability with a *conditional* cross-method agreement analysis
+#### Contribution 2 (Methodological) — a truly multimodal explainability framework, including a cross-modal contribution analysis
 We combine **intrinsic** cross-attention heatmaps (free, image-side, unique to this fusion architecture)
-with **post-hoc SHAP (BPE)** and **LIME (whole-word)**, and — beyond merely running three methods — we
-analyse **when they agree and when they diverge**: agreement holds for long, signal-rich titles and
-**inverts on short ones** (Chapter 6.4, sample 2115), while LIME's whole-word view recovers signal that
-SHAP's sub-word fragmentation hides (sample 2221). This conditional agreement framework (positioned
-against [16] Roshinta & Gábor's LIME-vs-SHAP study) is uncommon at this level and is more honest than a
-flawless-agreement story.
+with **post-hoc SHAP (BPE)** and **LIME (whole-word)** *run on the multimodal model itself* (image held
+fixed), plus a **modality-contribution** method that occludes each modality and measures the logit shift.
+Beyond merely running methods, the framework yields three results no single method gives: (i) the fused
+model is strongly **image-dominant** — removing the image flips 67% of verdicts vs 7% for the text (§6.4,
+Finding 2); (ii) the image **corrects** the text branch's vocabulary bias on real historical content
+(sample 1060); and (iii) on the residual text signal SHAP and LIME still **agree** on the dominant cue
+("crashes", sample 1627) while **diverging in sign** on borderline tokens — the conditional agreement
+analysis (positioned against [16] Roshinta & Gábor's LIME-vs-SHAP study), now anchored to the model we
+actually defend rather than a text-only stand-in.
 
 #### Contribution 3 (Empirical dataset finding) — α behaves opposite to the prevailing assumption, yet gating still wins
 Prior CLIP-based detectors assume **low text–image similarity signals manipulation**. On Fakeddit we find
@@ -599,57 +608,73 @@ seeds 7/123 for a mean ± std is a straightforward (~12 min) future addition and
 
 ## 6.4 Qualitative Analysis (Explainability)
 
-A second pillar of the chapter: the gated cross-attention architecture wins on the metrics (§6.3) **and**
-exposes intrinsic, image-side explanations that concatenation cannot. **12 attention examples** and
-**30 SHAP + 30 LIME** text explanations were generated.
+A second pillar of the chapter: the gated cross-attention model wins on the metrics (§6.3) **and** supports
+a **truly multimodal** explainability framework — every method explains the headline model or compares
+directly against it. Four lenses: (1) intrinsic cross-attention heatmaps (image); (2) SHAP and (3) LIME run
+on the **multimodal model with the image held fixed** (text, with the text-only model kept as a baseline);
+and (4) a **modality-contribution** analysis (cross-modal). Artefacts: 12 attention examples, 30 SHAP + 30
+LIME per model (`shap_mm/`, `lime_mm/` headline; `shap/`, `lime/` baseline), and 30 modality samples.
 
-> **Source of the attention heatmaps.** They are extracted from the **headline α-gated HEMT-CLIP**
-> (code `gated_fusion`, test acc 0.8313) — the gate is applied *after* the attention is computed, so these
-> are the best model's genuine cross-attention weights. The 12 examples are picked from
-> `preds_gated_fusion.npz`, stratified by correctness × confidence (notebook 05). The composite
-> `attention_grid.png` is the single §6.4 figure for the intrinsic method.
+> **Method note.** SHAP/LIME now attribute the headline α-gated HEMT-CLIP itself: per sample the real image
+> + α are held fixed and only the text is perturbed (`explainability.mm_common.make_mm_text_predict_fn`),
+> so the word-importance explains the *actual multimodal verdict* — not a separate text-only proxy. The
+> text-only model is run on the **same** samples (driven from `preds_gated_fusion.npz`) only as a baseline
+> for the comparison in Finding 3. *(This supersedes the earlier "SHAP/LIME on text-only by design" stance.)*
 
-**Finding 1 — Cross-attention produces structured, not random, heatmaps.** Every example shows
-non-uniform spatial focus; the model localises cleanly on figures/faces/text overlays in content-rich
-images and is more diffuse on cluttered/text-heavy images — but the diffuseness tracks *image content*,
-not method failure. Honest framing: *"cross-attention produces interpretable heatmaps whose focus quality
-varies with image structure."*
+**Finding 1 — Cross-attention produces structured, not random, heatmaps.** Every example shows non-uniform
+spatial focus; the model localises cleanly on figures/faces/text overlays in content-rich images and is
+more diffuse on cluttered/text-heavy images — but the diffuseness tracks *image content*, not method
+failure. Honest framing: *"cross-attention produces interpretable heatmaps whose focus quality varies with
+image structure."* *(Headline figure: `attention_grid.png`; inspect the current grid and name the actual
+regions before final write-up — the structured, content-dependent-focus claim holds regardless.)*
 
-> ✎ **Re-confirm the specific examples before final write-up.** The "figures/faces in content-rich images"
-> description is illustrative and was drafted from an earlier run; the heatmap picks regenerated on the
-> gated model, so inspect the current `attention_grid.png` and name the actual regions you see (the general
-> claim about structured, content-dependent focus holds regardless). *(Headline figure: `attention_grid.png`.)*
+**Finding 2 (headline) — HEMT-CLIP's decisions are image-dominant.** The modality-contribution method
+(`outputs/xai/modality/`) occludes one modality at a time and measures the drop in the predicted-class
+logit. Across 30 samples: **mean |Δlogit| = 3.17 for the image vs 0.48 for the text** (≈ 6.6×); removing
+the image **flips the verdict in 20/30 (67%)** cases, removing the text in only **2/30 (7%)**; the image is
+the dominant modality in **28/30**. The split is direction-aware: on FAKE predictions the image lends
+strong positive support (Δlogit_image ≈ +3 to +4.8), whereas on several REAL predictions the image pushes
+*toward* fake and the text/structure holds the verdict at real. **Interpretation:** the image branch acts
+as an aggressive fake-detector — the mechanistic counterpart of the recall-skew in §6.3.2 (high recall,
+lower precision). *(Headline figure: `modality_contrib.png`. Caveat: occlusion is off-distribution, so
+these are directional magnitudes, not calibrated Shapley credit; corroborated by image-only AUC > text-only
+AUC.)*
 
-**Finding 2 — Error analysis, sample 2221 (Kristallnacht) — methods agree on the mechanism.** Title:
-*"a german attacks jewishowned property during the kristallnacht colourized."* The text-only model
-**confidently misclassifies this real historical post as FAKE** (conf ≈ 0.715). **SHAP and LIME agree**
-that `property`, `attacks`, `german`/`erman`, `during` push toward *fake* — the model is **biased against
-violent/historical vocabulary**, mistaking factual history for sensational fake-news language. They
-**disagree** on `kristallnacht` and `colourized`: SHAP fragments them into misleading BPE pieces
-(`acht`, `ouri`); LIME's whole-word view recovers the real signal. **Takeaway:** LIME reveals what SHAP's
-sub-word fragmentation hides — the clearest justification for including both. *(Headline figure: 2221
-SHAP+LIME side-by-side.)*
+**Finding 3 — The image corrects text-only vocabulary bias (sample 1060).** Title: *"mussolini and his
+officers prototype the first italian concentration camp"* (true **real**). The **text-only** model
+confidently calls it **FAKE** (0.52) — almost every word (`concentration`, `camp`, `prototype`, `alian`)
+pushes fake (SHAP), the classic **violent/historical-vocabulary bias**. The **multimodal** model corrects
+it to **REAL** (0.74): the genuine historical photograph overrides the text bias. One sample makes the
+multimodal premium concrete — and it is the 67% image-flip rate of Finding 2 in action. *(Headline figure:
+text-only vs multimodal SHAP side-by-side, notebook 05 comparison cell.)*
 
-**Finding 3 — Success case, sample 1007 ("tree on rock") — strong agreement.** Both methods independently
-flag the compositional structure (object + preposition + object) as fake-pushing on a correctly predicted
-example. Agreement on a *success* (not a curated error) makes the agreement argument credible.
+**Finding 4 — Confident errors are image-driven, and the text XAI confirms it (sample 2306).** Title:
+*"united airlines cracking down on emotional support spouses"* (true **real**, predicted **FAKE** at 0.97 —
+a confident false positive). On the multimodal model **SHAP and LIME agree**, but their text attributions
+are **tiny and diffuse** (max |SHAP| ≈ 0.03; `emotional` is the lone weak real-pusher in both) — no single
+word explains the error. Modality contribution resolves it: **Δlogit_image ≈ +4.5 vs Δlogit_text ≈ +0.36**
+— the **image** drove the error, not the text. This is the payoff of combining methods: text attribution
+alone would leave a confident error unexplained; the cross-modal view names the cause.
 
-**Finding 4 — Methodology case, sample 2115 ("mad max") — methods disagree on sign.** Same model, same
-correct prediction (real, conf 0.791), **opposite attribution direction**. *Not a bug:* SHAP measures
-marginal contribution against an expected value, LIME measures local perturbation sensitivity; on a short
-2-content-word title each falls back to its theoretical default and they diverge. **Conclusion:
-cross-method agreement is conditional, not universal** — it holds for long signal-rich titles and can
-invert on short ones. Reporting this is more honest than a flawless-agreement story and independently
-validates using both methods.
+**Finding 5 — Cross-method validation on the text branch (sample 1627).** Title: *"man crashes into dmv
+wall in seaside during his drive test"* (fake, correct, 0.99). **SHAP and LIME independently agree** that
+**`crashes`** is the #1 fake-pusher (with `in`, `man`, `drive` also fake-leaning) — the model reads
+accident/crash vocabulary as a fake cue. They **disagree on the sign of `test`** (SHAP → fake, LIME →
+real): the familiar SHAP-vs-LIME divergence (marginal contribution vs perturbation sensitivity). So the
+agreement that validates text claims still holds — on the residual text signal — and the disagreement
+remains informative. *(Note: multimodal text attributions are ≈ 10× smaller than the text-only model's,
+consistent with Finding 2 — text is a minor contributor to the fused verdict.)*
 
-**Per-method notes.** Attention: zero-cost, intrinsic, architecture-specific. SHAP: BPE granularity is
-faithful but harder to read; n = 30 aggregate is not population-stable (no aggregate over-claiming).
-LIME: readable whole-word granularity; ~10% sampling variance but stable rank order.
+**Per-method notes.** Attention: zero-cost, intrinsic, architecture-specific. SHAP/LIME (multimodal):
+faithful per-sample attributions, but small magnitudes (text is secondary); the n = 30 aggregate is not
+population-stable (no aggregate over-claiming). Modality contribution: the cross-modal headline;
+occlusion-based, so directional.
 
-**Honest caveats to state.** Both post-hoc methods are perturbation-based and share an out-of-distribution
-floor; agreement is necessary but not sufficient evidence of true attribution. n = 30 is robust
-per-sample, not population-level. SHAP/LIME run on the text-only model (clean attribution semantics), by
-design.
+**Honest caveats to state.** All post-hoc methods (SHAP/LIME perturbation, modality occlusion) feed
+off-distribution inputs, so attributions are directional, not exact. n = 30 is robust per-sample, not
+population-level. The image-dominance magnitudes depend on the occlusion design (α = 0 to remove the image;
+empty title to remove text) and are reported as relative magnitudes corroborated by the image-only vs
+text-only AUC gap.
 
 ## 6.5 Comparison with Literature
 
@@ -662,13 +687,16 @@ your literature table.)*
 
 ## 6.6 Error Analysis
 
-The dominant, reportable error mode is the one surfaced in **Finding 2**: pure-text reasoning **conflates
-sensational / historical / violent vocabulary with fake-news markers**, misclassifying fact-grounded
-historical content as fake. This is precisely what the image channel and gated cross-attention are meant to
-mitigate — and the **+2.58 pt multimodal premium** (image-only → full HEMT-CLIP) in Table 6.1 is the
-quantitative counterpart to this qualitative text-only failure. A secondary point: Fakeddit labels are
-inherently noisy (Reddit-sourced), so some "errors" reflect label ambiguity rather than model failure — a
-dataset limitation worth flagging.
+Two error modes, on the two modalities. **(1) Text vocabulary bias (corrected):** pure-text reasoning
+conflates sensational / historical / violent vocabulary with fake-news markers (Finding 3, sample 1060) —
+but the fused model's image channel **overrides** this, which is the qualitative counterpart of the
+**+2.58 pt multimodal premium** (image-only → full HEMT-CLIP, Table 6.1). **(2) Image over-flagging
+(the dominant residual error):** because the model is image-dominant (Finding 2), its confident errors are
+mostly **false positives** — benign real posts whose image the network reads as fake-leaning (Finding 4,
+sample 2306; Δlogit_image ≫ Δlogit_text). This is the mechanism behind the recall-skew in §6.3.2 (high
+recall, lower precision) and behind the demo's tendency to over-predict FAKE on out-of-distribution images.
+A secondary point: Fakeddit labels are inherently noisy (Reddit-sourced), so some "errors" reflect label
+ambiguity rather than model failure — a dataset limitation worth flagging.
 
 ## 6.7 Summary of Findings
 
@@ -682,8 +710,12 @@ dataset limitation worth flagging.
    it is a learned soft-blend, not a naive "low α ⇒ fake" rule.
 6. **Cross-attention also delivers intrinsic image-side explainability** (14×14 heatmaps) that
    concatenation cannot — a capability bonus on top of the best metrics.
-7. **A unified three-method XAI framework** (attention + SHAP + LIME) yields a structured *conditional*
-   agreement analysis that is more informative, and more honest, than any single method.
+7. **A truly multimodal four-method XAI framework** (attention + multimodal SHAP/LIME + modality
+   contribution) shows the fused model is **image-dominant** (image moves the verdict ~6.6× more than text;
+   67% vs 7% flip rates), that the **image corrects text-only vocabulary bias** (sample 1060), and that
+   **confident errors are image-driven** (sample 2306) — with cross-method SHAP/LIME agreement still
+   validating the residual text signal (sample 1627). More informative, and more honest, than any single
+   method.
 
 ---
 ---
@@ -703,9 +735,11 @@ Paths under `outputs/` (produced on Drive by the notebooks; the local repo keeps
 | Confusion matrices ×5 | `outputs/eval/cm_{variant}.png` | 6.2 |
 | Attention composite grid | `outputs/xai/attention/attention_grid.png` | 6.4 (F1) |
 | 12 per-example attention panels | `outputs/xai/attention/*.png` | 6.4 / appendix |
-| SHAP per-sample bars (30) + aggregate | `outputs/xai/shap/*.png` | 6.4 |
-| LIME per-sample bars (30) | `outputs/xai/lime/*.png` | 6.4 |
-| SHAP↔LIME side-by-side (2221, 2115) | notebook `05` outputs | 6.4 (F2, F4) |
+| Modality-contribution bars (30) | `outputs/xai/modality/modality_contrib.png` (+ `.csv`) | 6.4 (F2) |
+| Multimodal SHAP bars (30) | `outputs/xai/shap_mm/*.png` | 6.4 (F4, F5) |
+| Multimodal LIME bars (30) | `outputs/xai/lime_mm/*.png` | 6.4 (F4, F5) |
+| Text-only SHAP/LIME baseline (30 each) | `outputs/xai/shap/*.png`, `outputs/xai/lime/*.png` | 6.4 (F3 comparison) |
+| text-only vs multimodal SHAP side-by-side (1060) | notebook `05` comparison cell | 6.4 (F3) |
 
 ## Appendix B — Headline Numbers (quick reference)
 
