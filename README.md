@@ -9,11 +9,13 @@ Advisor: Ma'am Hina Tufail
 
 HEMT-CLIP takes a social-media post (text + image) and predicts Real vs Fake with a confidence score, explained via cross-attention heatmaps and SHAP. The architecture combines:
 
-- **RoBERTa-base** (text, last 2 layers trainable)
-- **CLIP ViT-B/32** (vision tower, last 2 blocks trainable)
-- **8-head cross-attention fusion** (text queries attend over image patches)
-- **CLIP cosine similarity α** fed as an extra feature to the classifier
+- **RoBERTa-base** (text, last 4 layers fine-tuned)
+- **CLIP ViT-B/16** (vision tower, last 4 blocks fine-tuned)
+- **8-head cross-attention fusion** (text [CLS] query attends over image patches)
+- **CLIP-similarity gate α** — the attended vector is gated by the text–image cosine similarity: `fused = α·attended + (1−α)·text`
 - **2-layer MLP classifier** → P(Real), P(Fake)
+
+On the held-out test split (n = 2,573) the α-gated model is the best variant: **F1 0.839 / AUC 0.912** — beating plain concatenation and an α-as-feature ablation, while also providing intrinsic attention-heatmap explainability.
 
 See [HEMT_CLIP_Implementation_Blueprint.md](HEMT_CLIP_Implementation_Blueprint.md) for the full specification.
 
@@ -25,17 +27,11 @@ pip install -r requirements.txt
 
 ## Demo
 
-Launch the live Streamlit demo (serves the headline α-gated HEMT-CLIP):
-
-```bash
-# public URL via ngrok (set a free token first)
-NGROK_AUTHTOKEN=xxxxx python run_demo.py
-# or local only
-python run_demo.py --no-tunnel
-```
-
-`run_demo.py` discovers the latest `gated_fusion` checkpoint, launches `app/streamlit_app.py`,
-and opens the tunnel. See `python run_demo.py --help` for flags (`--variant`, `--ckpt`, `--port`).
+The interactive demo is **`notebooks/06_demo.ipynb`** — open it in Colab, run the bootstrap
+cell, then call `analyze(title, image)` to get a Real/Fake prediction with confidence, the CLIP
+text–image alignment α, and a live cross-attention heatmap. It serves the headline α-gated
+HEMT-CLIP (`gated_fusion`), discovers the latest checkpoint automatically, and ships with
+curated test examples plus a cell for trying custom headline + image inputs.
 
 ## Repository Layout
 
@@ -45,9 +41,7 @@ data/            Fakeddit download, HDF5 packer, PyTorch Dataset, splits
 models/          text/image encoders, fusion, classifier, full HEMT-CLIP
 explainability/  cross-attention viz + SHAP/LIME for text
 training/        training loop, evaluation, ablation runner
-app/             Streamlit demo (streamlit_app.py)
-run_demo.py      demo launcher (checkpoint discovery + streamlit + ngrok)
-notebooks/       data exploration, smoke test, full training, eval, XAI
+notebooks/       data exploration, smoke test, full training, eval, XAI, demo
 checkpoints/     trained weights (kept on Google Drive)
 outputs/         plots and figures for the report
 ```
@@ -59,4 +53,4 @@ outputs/         plots and figures for the report
 | A | Text-only baseline |
 | B | Image-only baseline |
 | C | Concat fusion `[text, image, α]` |
-| D | HEMT-CLIP (cross-attention + α) |
+| D | **HEMT-CLIP** (α-gated cross-attention) |

@@ -159,4 +159,4 @@ The system gives **three kinds of explanation**:
 5. **Explainability** (§5) — show or describe the heatmap + word importance.
 6. Invite questions; lean on §7.
 
-**Tip:** if you can, have the **live demo** (`python run_demo.py --no-tunnel`) open on a test sample — the attention heatmap is the most memorable thing in the whole project.
+**Tip:** if you can, have the **live demo** (`notebooks/06_demo.ipynb` — run `analyze()` on a test sample) open — the attention heatmap is the most memorable thing in the whole project.

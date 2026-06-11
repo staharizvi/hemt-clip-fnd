@@ -305,13 +305,12 @@ preprocessing, text encoding, image encoding, cross-attention fusion, and explai
 
 ### 5.1.2 Interface Design
 
-The Streamlit demo (`app/streamlit_app.py`, ngrok-tunnelled for the viva) provides:
-- **Production View** — text box + image upload (or a dropdown of 6 canned test samples), Analyze button,
-  Real/Fake label with class-probability bars and the α value with a verbal interpretation
-  (low / moderate / high), plus ground-truth comparison when a test sample is chosen.
-- **Attention Heatmap View** — live 14×14 attention overlay computed per prediction (<1 s on T4).
-- **SHAP Explanation View** — precomputed per-sample SHAP bar looked up by sample id.
-- **LIME Explanation View** — *(now realised, not optional)* precomputed whole-word LIME bar.
+The demo notebook (`notebooks/06_demo.ipynb`) exposes a single `analyze(title, image)` call that provides:
+- **Prediction** — Real/Fake label with class-probability bars and the α value with a verbal interpretation
+  (low / moderate / high), plus ground-truth comparison when a built-in test sample is used.
+- **Attention heatmap** — live 14×14 cross-attention overlay computed per prediction (<1 s on T4).
+- **Inputs** — a dropdown of canned test samples or a custom headline + image.
+- **SHAP / LIME** — per-sample text-attribution figures (precomputed in notebook 05) for the qualitative analysis.
 
 ### 5.1.3 System Modeling
 
@@ -332,7 +331,7 @@ render label + α + attention heatmap; SHAP/LIME served from precomputed artefac
 | Metrics | scikit-learn |
 | Explainability | `shap` 0.45, `lime` 0.2 |
 | Experiment tracking | **TensorBoard** (logs persisted to Google Drive) |
-| Demo | `streamlit` 1.32 + `pyngrok` |
+| Demo | `notebooks/06_demo.ipynb` (matplotlib, runs on Colab) |
 | Compute / storage | Google Colab Pro (NVIDIA **T4 16 GB**) + Google Drive (5 TB) |
 
 > Note: the plan listed Weights & Biases. **TensorBoard was used instead** (account-free, writes logs
