@@ -69,9 +69,6 @@ class CrossAttentionFusion(nn.Module):
         )
         attended = self.norm1(q + self.dropout(attn_out))   # (B, 1, 512)
         if alpha is not None:
-            # CLIP-similarity gate: trust the cross-attended (image-informed)
-            # vector in proportion to text-image agreement, fall back to text
-            # otherwise. Parameter-free, so it shares weights with the un-gated path.
             a = alpha.view(-1, 1, 1).to(attended.dtype)   # match autocast dtype
             attended = a * attended + (1.0 - a) * q
         x = self.norm2(attended + self.dropout(self.ffn(attended)))

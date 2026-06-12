@@ -68,8 +68,6 @@ class ImageEncoder(nn.Module):
         for i, layer in enumerate(vm.encoder.layers):
             for p in layer.parameters():
                 p.requires_grad = i >= n_frozen
-        # post_layernorm sits after the last block; keep it trainable
-        # so the trainable blocks see meaningful gradients into it.
         for p in vm.post_layernorm.parameters():
             p.requires_grad = True
 

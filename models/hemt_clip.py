@@ -56,9 +56,6 @@ class HEMTCLIP(nn.Module):
         classifier_cfg = classifier_cfg or {}
 
         self.variant = variant
-        # alpha is a text-image agreement signal; ignore it for unimodal baselines.
-        # `gated_fusion` consumes alpha inside the fusion gate, so it is NOT
-        # concatenated to the classifier input (hence excluded here).
         self.use_alpha = use_alpha and variant in {"concat_fusion", "hemt_clip"}
 
         needs_text = variant != "image_only"

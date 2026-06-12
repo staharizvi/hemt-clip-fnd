@@ -24,9 +24,6 @@ class TextEncoder(nn.Module):
         dropout: float = 0.1,
     ) -> None:
         super().__init__()
-        # add_pooling_layer=False: the pooler isn't pretrained for roberta-base
-        # (no NSP objective), so HF warns about random init. We use [CLS] from
-        # last_hidden_state directly, so we don't need the pooler at all.
         self.backbone = RobertaModel.from_pretrained(model_name, add_pooling_layer=False)
         hidden_dim = self.backbone.config.hidden_size  # 768 for roberta-base
 
