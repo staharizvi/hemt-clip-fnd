@@ -22,9 +22,14 @@ class TextEncoder(nn.Module):
         proj_dim: int = 512,
         trainable_layers: int = 2,
         dropout: float = 0.1,
+        local_files_only: bool = False,
     ) -> None:
         super().__init__()
-        self.backbone = RobertaModel.from_pretrained(model_name, add_pooling_layer=False)
+        self.backbone = RobertaModel.from_pretrained(
+            model_name,
+            add_pooling_layer=False,
+            local_files_only=local_files_only,
+        )
         hidden_dim = self.backbone.config.hidden_size  # 768 for roberta-base
 
         self._freeze(trainable_layers)

@@ -38,9 +38,12 @@ class ImageEncoder(nn.Module):
         proj_dim: int = 512,
         trainable_blocks: int = 2,
         dropout: float = 0.1,
+        local_files_only: bool = False,
     ) -> None:
         super().__init__()
-        self.backbone = CLIPVisionModel.from_pretrained(model_name)
+        self.backbone = CLIPVisionModel.from_pretrained(
+            model_name, local_files_only=local_files_only
+        )
         hidden_dim = self.backbone.config.hidden_size  # 768 for both ViT-B/32 and ViT-B/16
 
         self._freeze(trainable_blocks)

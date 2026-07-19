@@ -129,7 +129,11 @@ class HEMTCLIP(nn.Module):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
 
-def build_from_config(cfg: dict, variant: str | None = None) -> HEMTCLIP:
+def build_from_config(
+    cfg: dict,
+    variant: str | None = None,
+    local_files_only: bool = False,
+) -> HEMTCLIP:
     """Construct a HEMTCLIP from the nested `model` block of base.yaml."""
     m = cfg["model"]
     return HEMTCLIP(
@@ -139,11 +143,13 @@ def build_from_config(cfg: dict, variant: str | None = None) -> HEMTCLIP:
             "proj_dim": m["text"]["proj_dim"],
             "trainable_layers": m["text"]["trainable_layers"],
             "dropout": m["text"]["dropout"],
+            "local_files_only": local_files_only,
         },
         image_cfg={
             "model_name": m["image"]["name"],
             "proj_dim": m["image"]["embed_dim"],
             "trainable_blocks": m["image"]["trainable_blocks"],
+            "local_files_only": local_files_only,
         },
         fusion_cfg={
             "embed_dim": m["image"]["embed_dim"],
